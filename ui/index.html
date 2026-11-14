@@ -1,0 +1,459 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html, body { height: 100%; overflow: hidden; }
+      main { height: 100%; display: flex; flex-direction: column; padding: 18px 36px 20px; gap: 14px; box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      h1 { margin: 0; font-size: 26px; font-weight: 700; }
+      p { margin: 0; }
+      .muted { color: var(--rcs-muted); }
+      .mono { font-family: var(--rcs-mono); }
+      .grow { flex: 1; }
+      .row { display: flex; align-items: center; gap: 16px; }
+      .intro p { font-size: 17px; margin-top: 8px; line-height: 1.45; max-width: 1100px; }
+
+      /* choose */
+      .cards { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; min-height: 0; }
+      .card { display: flex; flex-direction: column; gap: 10px; padding: 20px 24px; border: 1px solid var(--rcs-border); border-radius: 16px; background: var(--rcs-surface); }
+      .card .t { display: flex; align-items: baseline; gap: 12px; font-size: 22px; font-weight: 700; }
+      .card .k { font: 600 13px var(--rcs-mono); color: var(--rcs-muted); letter-spacing: 0.06em; }
+      .card .d { font-size: 16px; line-height: 1.45; }
+      .card .b { font-size: 15px; color: var(--rcs-muted); }
+
+      /* host */
+      .host { display: flex; align-items: flex-end; gap: 24px; }
+      .host rcs-field:first-child { width: 420px; }
+      .host rcs-field + rcs-field { width: 180px; }
+
+      /* buttons */
+      .bar { display: flex; align-items: center; gap: 14px; min-height: 30px; font-size: 15px; white-space: nowrap; }
+      .bar .url { font: 600 15px var(--rcs-mono); color: var(--rcs-accent); }
+      .tiles { flex: 1; min-height: 0; display: grid; justify-content: center; align-content: center; }
+      .tiles.size12x3 { grid-template-columns: repeat(12, 112px); grid-template-rows: repeat(3, 112px); column-gap: 36px; row-gap: 30px; }
+      .tiles.sizekeys { grid-template-columns: repeat(11, 112px); grid-template-rows: repeat(2, 112px); gap: 38px; }
+      .tiles.fluid { justify-content: stretch; align-content: stretch; gap: 12px; }
+      .tile { position: relative; border-radius: 14px; overflow: hidden; background: #000; border: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex; align-items: center; justify-content: center; padding: 0; color: #fff; touch-action: none; user-select: none; }
+      .tile img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; image-rendering: auto; }
+      .tile span { white-space: pre-line; text-align: center; font: 700 17px var(--rcs-font); padding: 6px; pointer-events: none; }
+      .tile.pressed { outline: 3px solid var(--rcs-accent); outline-offset: -3px; }
+      .tile.empty { background: var(--rcs-surface); }
+      .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; }
+      .empty p { color: var(--rcs-muted); font-size: 18px; max-width: 900px; line-height: 1.5; }
+      .empty .big { font-size: 22px; font-weight: 600; color: var(--rcs-text); }
+
+      /* status */
+      .status { flex: 1; min-height: 0; display: grid; grid-template-columns: 560px 1fr; gap: 32px; }
+      .manage { display: flex; flex-direction: column; gap: 10px; padding: 18px 22px; border: 1px solid var(--rcs-border); border-radius: 16px; background: var(--rcs-surface); }
+      .cap { font-size: 13px; font-weight: 600; letter-spacing: 0.08em; color: var(--rcs-muted); }
+      .manage .url { font: 700 24px var(--rcs-mono); color: var(--rcs-accent); }
+      .manage .note { font-size: 15px; color: var(--rcs-muted); line-height: 1.45; }
+      dl { margin: 0; display: grid; grid-template-columns: repeat(2, auto 1fr); gap: 10px 18px; font-size: 15px; align-content: start; }
+      dt { color: var(--rcs-muted); white-space: nowrap; }
+      dd { margin: 0; font-family: var(--rcs-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      pre { margin: 0; font: 12px/1.45 var(--rcs-mono); color: var(--rcs-muted); white-space: pre-wrap; overflow: hidden; max-height: 104px; }
+
+      /* setup */
+      .setup { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 32px; align-content: start; }
+      .item { display: flex; align-items: center; gap: 20px; padding: 14px 18px; border: 1px solid var(--rcs-border); border-radius: 14px; background: var(--rcs-surface); }
+      .item .t { flex: 1; min-width: 0; }
+      .item .n { font-size: 17px; font-weight: 600; }
+      .item .s { font-size: 14px; color: var(--rcs-muted); margin-top: 4px; line-height: 1.4; }
+      .wide { grid-column: 1 / -1; }
+      .seg { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--rcs-bg); border: 1px solid var(--rcs-border); }
+      .seg button { height: 44px; padding: 0 18px; border-radius: 9px; border: none; background: transparent; color: var(--rcs-text); font: 600 15px var(--rcs-font); cursor: pointer; }
+      .seg button[aria-pressed='true'] { background: var(--rcs-accent); color: var(--rcs-bg); }
+      .fields { display: flex; gap: 16px; align-items: flex-end; }
+      .fields rcs-field:first-child { width: 320px; }
+      .fields rcs-field + rcs-field { width: 150px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <!-- First start: which Companion -->
+      <section id="choose" hidden style="display: contents">
+        <div class="intro">
+          <h1>What should this panel run?</h1>
+          <p class="muted">The module hands the 15 keys and the touch screen to Companion as two surfaces. You can change this later in Setup.</p>
+        </div>
+        <div class="cards">
+          <div class="card">
+            <div class="t">Companion on this panel <span class="k">KEY 6</span></div>
+            <span class="d">Runs Companion here. You set up buttons, connections and pages in a browser at this panel's address, port 8000.</span>
+            <span class="b">Best when this rack is the only control surface, or the show runs from here.</span>
+            <div class="grow"></div>
+            <div class="row"><rcs-button id="pickLocal" variant="primary">Run Companion here</rcs-button></div>
+          </div>
+          <div class="card">
+            <div class="t">Companion Satellite <span class="k">KEY 8</span></div>
+            <span class="d">Connects to a Companion already running on another computer. Buttons are set up on that computer.</span>
+            <span class="b">Best when the show already has a Companion machine.</span>
+            <div class="grow"></div>
+            <div class="row"><rcs-button id="pickSatellite">Connect to Companion</rcs-button></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Satellite: where is Companion -->
+      <section id="host" hidden style="display: contents">
+        <div class="intro">
+          <h1>Where is Companion running?</h1>
+          <p class="muted">Tap the address and type it on the Stream Deck. This panel connects to Companion's Satellite port, 16622 unless it was changed there.</p>
+        </div>
+        <div class="host">
+          <rcs-field id="hostAddr" label="Companion address" kind="ip" placeholder="10.0.1.50"></rcs-field>
+          <rcs-field id="hostPort" label="Port" kind="number"></rcs-field>
+        </div>
+        <div class="grow"></div>
+        <div class="row">
+          <rcs-button id="hostBack">Back</rcs-button>
+          <div class="grow"></div>
+          <rcs-button id="hostConnect" variant="primary">Connect</rcs-button>
+        </div>
+      </section>
+
+      <!-- Running: the touch surface -->
+      <section id="buttons" hidden style="display: contents">
+        <div class="bar" id="bar">
+          <rcs-status id="pill" connection="disconnected"></rcs-status>
+          <span class="muted" id="manageLabel"></span>
+          <span class="url" id="manageUrl"></span>
+          <div class="grow"></div>
+          <span class="muted mono" id="gridLabel"></span>
+        </div>
+        <div class="tiles" id="tiles" role="group" aria-label="Touch buttons, a surface in Companion"></div>
+        <div class="empty" id="offline" hidden>
+          <span class="big" id="offlineTitle"></span>
+          <p id="offlineText"></p>
+          <rcs-button id="toStatus">Open Status</rcs-button>
+        </div>
+      </section>
+
+      <section id="status" hidden style="display: contents">
+        <div class="row"><h1>Status</h1><rcs-status id="pill2" connection="disconnected"></rcs-status></div>
+        <div class="status">
+          <div class="manage">
+            <span class="cap" id="manageCaps"></span>
+            <span class="url" id="manageUrl2"></span>
+            <span class="note" id="manageNote"></span>
+            <div class="grow"></div>
+            <div class="row">
+              <rcs-button id="reconnect">Reconnect</rcs-button>
+              <rcs-button id="restart" hidden>Restart Companion</rcs-button>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 14px; min-width: 0">
+            <dl id="facts"></dl>
+            <pre id="tail" hidden></pre>
+          </div>
+        </div>
+      </section>
+
+      <section id="setup" hidden style="display: contents">
+        <h1>Setup</h1>
+        <div class="setup">
+          <div class="item">
+            <div class="t"><div class="n">Runs</div><div class="s" id="modeNote"></div></div>
+            <rcs-button id="changeMode" size="small">Change…</rcs-button>
+          </div>
+          <div class="item" id="remoteItem">
+            <div class="fields">
+              <rcs-field id="addr" label="Companion address" kind="ip"></rcs-field>
+              <rcs-field id="port" label="Port" kind="number"></rcs-field>
+            </div>
+          </div>
+          <div class="item" id="localItem">
+            <div class="t"><div class="n">Companion folder</div><div class="s mono" id="dirNote"></div></div>
+          </div>
+          <div class="item wide">
+            <div class="t">
+              <div class="n">Touch buttons</div>
+              <div class="s">The surface Companion sees on the touch screen. 12×3 and Key size draw buttons about as big as the Stream Deck keys; 12×3 hides the address bar to fit three rows (the address stays on Status). Changing it re-registers the surface.</div>
+            </div>
+            <div class="seg" id="grids" role="group" aria-label="Touch grid"></div>
+          </div>
+          <div class="item wide">
+            <div class="t">
+              <div class="n">What a save holds</div>
+              <div class="s">The choice above, the Companion address and the grid size. Buttons, pages and connections live in Companion and are backed up there.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <rcs-dialog id="confirm">
+      <span id="confirmText"></span>
+      <div slot="buttons">
+        <rcs-button id="no">Cancel</rcs-button>
+        <rcs-button id="yes" variant="danger">OK</rcs-button>
+      </div>
+    </rcs-dialog>
+
+    <script type="module">
+      const $ = (id) => document.getElementById(id);
+      let s = null;
+      let grid = { columns: 0, rows: 0 };
+      const tiles = new Map(); // index -> latest tile from the module
+      let onYes = null;
+
+      function el(tag, attrs = {}, text) {
+        const e = document.createElement(tag);
+        for (const [k, v] of Object.entries(attrs)) {
+          if (v === true) e.setAttribute(k, '');
+          else if (v !== false && v != null) e.setAttribute(k, String(v));
+        }
+        if (text != null) e.textContent = text;
+        return e;
+      }
+
+      function ask(text, label, fn) {
+        $('confirmText').textContent = text;
+        $('yes').textContent = label;
+        onYes = fn;
+        $('confirm').show();
+      }
+      $('no').onclick = () => $('confirm').close();
+      $('yes').onclick = () => {
+        $('confirm').close();
+        onYes?.();
+      };
+
+      // ---- the touch grid ----
+
+      const pointers = new Map(); // pointerId -> key index
+      function down(e, i) {
+        e.preventDefault();
+        if (pointers.has(e.pointerId)) return;
+        pointers.set(e.pointerId, i);
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+        rcs.send({ type: 'touch', key: i, pressed: true });
+      }
+      function up(e) {
+        const i = pointers.get(e.pointerId);
+        if (i === undefined) return;
+        pointers.delete(e.pointerId);
+        // Another finger may still be on the same key.
+        if (![...pointers.values()].includes(i)) rcs.send({ type: 'touch', key: i, pressed: false });
+      }
+
+      function buildGrid() {
+        const box = $('tiles');
+        const fixed = s.grid.id === '12x3' || s.grid.id === 'keys';
+        box.className = 'tiles ' + (fixed ? 'size' + s.grid.id : 'fluid');
+        if (!fixed) {
+          box.style.gridTemplateColumns = `repeat(${grid.columns}, minmax(0, 1fr))`;
+          box.style.gridTemplateRows = `repeat(${grid.rows}, minmax(0, 1fr))`;
+        } else {
+          box.style.gridTemplateColumns = box.style.gridTemplateRows = '';
+        }
+        const list = [];
+        for (let i = 0; i < grid.columns * grid.rows; i++) {
+          const b = el('button', { class: 'tile empty', 'data-i': i, 'aria-label': `Button ${i + 1}` });
+          b.addEventListener('pointerdown', (e) => down(e, i));
+          b.addEventListener('pointerup', up);
+          b.addEventListener('pointercancel', up);
+          b.addEventListener('lostpointercapture', up);
+          b.addEventListener('contextmenu', (e) => e.preventDefault());
+          list.push(b);
+        }
+        box.replaceChildren(...list);
+        for (const t of tiles.values()) paint(t);
+      }
+
+      function paint(t) {
+        const b = $('tiles').querySelector(`[data-i="${t.i}"]`);
+        if (!b) return;
+        const blank = !t.image && !t.text && !t.color;
+        b.classList.toggle('empty', blank);
+        b.classList.toggle('pressed', !!t.pressed);
+        b.style.background = t.color ?? '';
+        b.style.color = t.textColor ?? '';
+        const label = (t.text ?? '').trim();
+        b.setAttribute('aria-label', `Button ${t.i + 1}${label ? ', ' + label.replace(/\s+/g, ' ') : ''}`);
+        if (t.image) {
+          let img = b.querySelector('img');
+          if (!img) b.replaceChildren((img = el('img', { alt: '' })));
+          const src = 'data:image/png;base64,' + t.image;
+          if (img.getAttribute('src') !== src) img.src = src;
+        } else {
+          b.replaceChildren(label ? el('span', {}, label) : '');
+        }
+      }
+
+      function onTiles(m) {
+        if (m.reset || m.columns !== grid.columns || m.rows !== grid.rows) {
+          tiles.clear();
+          grid = { columns: m.columns, rows: m.rows };
+          for (const t of m.tiles) tiles.set(t.i, t);
+          if (s) buildGrid();
+          return;
+        }
+        for (const t of m.tiles) {
+          tiles.set(t.i, t);
+          paint(t);
+        }
+      }
+
+      // ---- views ----
+
+      function pill(id) {
+        const live = s.surfaces.touch?.registered || s.surfaces.keys?.registered;
+        $(id).setAttribute('connection', live ? 'connected' : s.connection === 'connected' ? 'connecting' : s.connection);
+        $(id).textContent = live ? (s.config.mode === 'local' ? 'Companion running' : 'Satellite connected') : '';
+      }
+
+      function manageText() {
+        const local = s.config.mode === 'local';
+        $('manageLabel').textContent = local ? 'Set up buttons at' : 'Buttons are set up in Companion at';
+        $('manageUrl').textContent = s.manageUrl;
+        $('manageCaps').textContent = local ? 'MANAGE COMPANION AT' : 'SET UP BUTTONS IN COMPANION AT';
+        $('manageUrl2').textContent = s.manageUrl;
+        $('manageNote').textContent =
+          (local ? 'Open this in a browser on the same network.' : 'Companion runs on that computer (its admin page is usually on port 8000).') +
+          ` This panel shows up there as two surfaces: ${s.surfaces.keys.id} and ${s.surfaces.touch.id}.`;
+      }
+
+      function drawButtons() {
+        pill('pill');
+        manageText();
+        $('bar').hidden = s.grid.id === '12x3';
+        $('gridLabel').textContent = s.grid.label;
+        const live = !!s.surfaces.touch?.registered;
+        $('tiles').hidden = !live;
+        $('offline').hidden = live;
+        if (!live) {
+          const r = s.runner;
+          const err = s.surfaces.touch?.error;
+          let title = 'Connecting to Companion';
+          let text = s.statusText || `Looking for Companion at ${s.companion.address || s.config.host}`;
+          if (r?.state === 'missing') {
+            title = 'Companion is not installed on this panel';
+            text = `The module looks for Companion's headless build in ${r.dir}. Install it there, or connect to a Companion on another computer in Setup.`;
+          } else if (r && r.state !== 'running') {
+            title = 'Starting Companion';
+            text = r.lastExit ? `Companion ${r.lastExit}. Starting it again.` : 'This takes a few seconds.';
+          } else if (err) {
+            title = 'Companion refused the touch surface';
+            text = err;
+          }
+          $('offlineTitle').textContent = title;
+          $('offlineText').textContent = text;
+        }
+      }
+
+      function ago(t) {
+        if (!t) return '—';
+        const m = Math.floor((Date.now() - t) / 60000);
+        return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
+      }
+
+      function drawStatus() {
+        pill('pill2');
+        manageText();
+        const r = s.runner;
+        const surf = (x) => (x?.registered ? `${x.columns}×${x.rows} · connected` : x?.error ? `refused: ${x.error}` : 'not connected');
+        const rows = [
+          ['Runs', s.config.mode === 'local' ? 'Companion, on this panel' : 'Satellite, to another computer'],
+          ['Companion', s.companion.version ? `${s.companion.version} · API ${s.companion.api}` : '—'],
+          ['Connection', s.statusText || s.connection],
+          ['This panel', s.self],
+          ['Surface: keys', surf(s.surfaces.keys)],
+          ['Surface: touch', surf(s.surfaces.touch)]
+        ];
+        if (r) {
+          rows.push(['Process', r.pid ? `pid ${r.pid} · up ${ago(r.startedAt)}` : r.state]);
+          rows.push(['Restarts', `${r.restarts} since start${r.lastExit ? ' · last ' + r.lastExit : ''}`]);
+          rows.push(['Installed in', r.dir]);
+          rows.push(['Config', r.configDir]);
+        }
+        $('facts').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', { title: v }, v)]));
+        $('restart').hidden = !r;
+        $('tail').hidden = !r?.tail?.length;
+        $('tail').textContent = (r?.tail ?? []).join('\n');
+      }
+
+      function drawSetup() {
+        const local = s.config.mode === 'local';
+        $('modeNote').textContent = local ? 'Companion, on this panel' : `Companion Satellite, connected to ${s.config.host}`;
+        $('remoteItem').hidden = local;
+        $('localItem').hidden = !local;
+        $('dirNote').textContent = s.config.companionDir;
+        if (!$('addr').matches('[editing]')) $('addr').value = s.config.host;
+        if (!$('port').matches('[editing]')) $('port').value = String(s.config.port);
+        $('grids').replaceChildren(
+          ...s.grids.map((g) => {
+            const b = el('button', { 'aria-pressed': String(g.id === s.grid.id) }, g.label);
+            b.onclick = () => g.id !== s.grid.id && rcs.send({ type: 'config', config: { grid: g.id } });
+            return b;
+          })
+        );
+      }
+
+      function draw() {
+        if (!s) return;
+        const view = s.phase === 'running' ? s.view : s.phase;
+        for (const v of ['choose', 'host', 'buttons', 'status', 'setup']) {
+          $(v).hidden = v !== view;
+          $(v).style.display = v === view ? 'contents' : 'none';
+        }
+        if (view === 'host') {
+          if (!$('hostAddr').matches('[editing]')) $('hostAddr').value = s.config.host;
+          if (!$('hostPort').matches('[editing]')) $('hostPort').value = String(s.config.port);
+        }
+        if (view === 'buttons') drawButtons();
+        if (view === 'status') drawStatus();
+        if (view === 'setup') drawSetup();
+      }
+
+      $('pickLocal').onclick = () => rcs.send({ type: 'choose', mode: 'local' });
+      $('pickSatellite').onclick = () => rcs.send({ type: 'choose', mode: 'satellite' });
+      $('hostBack').onclick = () => rcs.send({ type: 'choose', mode: '' });
+      $('hostConnect').onclick = () => {
+        const host = ($('hostAddr').value ?? '').trim();
+        if (host) rcs.send({ type: 'config', config: { host, port: Number($('hostPort').value) || 16622 } });
+      };
+      $('hostAddr').addEventListener('change', (e) => e.detail && rcs.send({ type: 'config', config: { host: e.detail, port: Number($('hostPort').value) || 16622 } }));
+      $('toStatus').onclick = () => rcs.send({ type: 'view', view: 'status' });
+      $('reconnect').onclick = () => rcs.send({ type: 'reconnect' });
+      $('restart').onclick = () => ask('Restart Companion? Buttons stop working for a few seconds while it starts again.', 'Restart', () => rcs.send({ type: 'restart' }));
+      $('changeMode').onclick = () =>
+        ask(
+          s.config.mode === 'local'
+            ? 'Stop Companion on this panel and choose again? Its buttons and connections stay in its config.'
+            : 'Disconnect from Companion and choose again? The buttons stay set up in Companion.',
+          'Change',
+          () => rcs.send({ type: 'choose', mode: '' })
+        );
+      $('addr').addEventListener('change', (e) => rcs.send({ type: 'config', config: { host: e.detail } }));
+      $('port').addEventListener('change', (e) => rcs.send({ type: 'config', config: { port: Number(e.detail) } }));
+
+      // A hidden page gets no pointerup: let go of everything.
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden && pointers.size) {
+          pointers.clear();
+          rcs.send({ type: 'release-all' });
+        }
+      });
+
+      await rcs.ready();
+      rcs.on('message', (m) => {
+        if (m?.type === 'tiles') return onTiles(m);
+        if (m?.type !== 'snapshot') return;
+        const rebuild = !s || s.grid.id !== m.grid.id || s.phase !== m.phase;
+        s = m;
+        draw();
+        if (rebuild && s.phase === 'running') buildGrid();
+      });
+      rcs.on('visibility', (v) => {
+        if (!v && pointers.size) {
+          pointers.clear();
+          rcs.send({ type: 'release-all' });
+        }
+      });
+      rcs.send({ type: 'hello' });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "mode": { "enum": ["", "satellite", "local"] },
+    "host": { "type": "string", "maxLength": 253 },
+    "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+    "grid": { "enum": ["12x3", "8x2", "6x2", "4x1", "keys"] },
+    "companionDir": { "type": "string", "maxLength": 512 }
+  },
+  "required": ["mode", "host", "port", "grid", "companionDir"],
+  "additionalProperties": false
+}
