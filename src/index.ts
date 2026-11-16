@@ -14,7 +14,9 @@ import path from 'node:path';
 import { defineModule, type Ctx, type KeySetParams } from '@rcs/module-sdk';
 import { SatelliteClient, type SurfaceSpec } from './client.js';
 import { DEFAULT_PORT, type KeyState } from './protocol.js';
-import { ADMIN_PORT, CompanionRunner } from './runner.js';
+import { rm } from 'node:fs/promises';
+import { ADMIN_PORT, CompanionRunner, downloadFor, MODULE_BUNDLE_URL } from './runner.js';
+import { download, downloadsDir, installedVersion, installTarball, isNewer, latestPackage, openInstaller, packageTarget, type Package } from './updater.js';
 
 export type Mode = '' | 'satellite' | 'local';
 export type GridId = '12x3' | '8x2' | '6x2' | '4x1' | 'keys';
@@ -65,8 +67,25 @@ interface Runtime {
   clientHeld: Map<string, Set<string>>;
   deckHeld: Set<number>;
   dirty: { deck: Set<number>; touch: Set<number>; timer: NodeJS.Timeout | null };
+  update: UpdateState;
 }
 let rt: Runtime | null = null;
+
+interface UpdateState {
+  checking: boolean;
+  checkedAt: number | null;
+  latest: Package | null;
+  /** idle, downloading, installing, done or error; only ever moved on by someone pressing Update. */
+  phase: 'idle' | 'downloading' | 'installing' | 'done' | 'error';
+  done: number;
+  total: number;
+  message: string;
+}
+
+const newUpdate = (): UpdateState => ({ checking: false, checkedAt: null, latest: null, phase: 'idle', done: 0, total: 0, message: '' });
+
+/** Where updates come from; tests point it at a fake Bitfocus. */
+export const updateSource: { api?: string; fetchImpl?: typeof fetch; downloads?: string; platform?: NodeJS.Platform; arch?: string; open?: (file: string) => void } = {};
 
 const ADDRESS_RE = /^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/;
 
@@ -269,6 +288,110 @@ function releaseAll(): void {
   rt.deckHeld.clear();
 }
 
+// ---- updating Companion: only when someone presses Update and confirms -----------------------------
+
+function updateTarget(): string | null {
+  return packageTarget(updateSource.platform, updateSource.arch);
+}
+
+/** What the web view shows about updates. */
+function updateInfo() {
+  const u = rt?.update ?? newUpdate();
+  const runner = rt?.runner;
+  const installed = installedVersion(runner?.found ?? null) || rt?.client?.companionVersion || '';
+  // Linux builds are .tar.gz and are put in place; macOS and Windows get their installer.
+  const tarball = !!updateTarget()?.endsWith('tgz');
+  let blocked = '';
+  if (tarball && runner?.state === 'external') blocked = 'Companion is running outside the module, so it is updated where it was started (on a CompanionPi: sudo companion-update).';
+  else if (tarball && !runner?.found) blocked = 'Companion is not installed here yet.';
+  return {
+    target: updateTarget(),
+    installed,
+    latest: u.latest ? { version: u.latest.version, published: u.latest.published, file: path.basename(new URL(u.latest.uri).pathname) } : null,
+    available: !!u.latest && isNewer(u.latest.version, installed),
+    how: tarball ? 'replace' : 'installer',
+    blocked,
+    checking: u.checking,
+    checkedAt: u.checkedAt,
+    phase: u.phase,
+    done: u.done,
+    total: u.total,
+    message: u.message
+  };
+}
+
+function sendUpdate(ctx: C): Promise<void> {
+  return ctx.ui.send(snapshot(ctx));
+}
+
+async function checkUpdate(ctx: C): Promise<void> {
+  const u = rt?.update;
+  const target = updateTarget();
+  if (!u || u.checking || !target) return;
+  u.checking = true;
+  await sendUpdate(ctx);
+  try {
+    u.latest = await latestPackage(target, { api: updateSource.api ?? process.env.RCS_COMPANION_PACKAGES_API, fetchImpl: updateSource.fetchImpl });
+    if (u.phase === 'error') u.phase = 'idle';
+    if (u.phase === 'idle') u.message = u.latest ? '' : 'Bitfocus lists no Companion build for this computer.';
+  } catch (e) {
+    if (u.phase === 'idle' || u.phase === 'error') u.message = `Could not check for updates: ${(e as Error).message}`;
+  } finally {
+    u.checking = false;
+    u.checkedAt = Date.now();
+  }
+  await sendUpdate(ctx);
+}
+
+async function installUpdate(ctx: C): Promise<void> {
+  const u = rt?.update;
+  const runner = rt?.runner;
+  if (!u || !u.latest || u.phase === 'downloading' || u.phase === 'installing' || cfg(ctx).mode !== 'local') return;
+  const info = updateInfo();
+  if (info.blocked) return;
+  const pkg = u.latest;
+  const file = info.latest!.file;
+  const progress = (done: number, total: number) => {
+    u.done = done;
+    u.total = total;
+    void sendUpdate(ctx);
+  };
+  u.phase = 'downloading';
+  u.done = u.total = 0;
+  u.message = `Downloading Companion ${pkg.version}`;
+  await sendUpdate(ctx);
+  try {
+    if (info.how === 'replace' && runner?.found) {
+      const tgz = path.join(ctx.dataDir, 'updates', file);
+      await download(pkg.uri, tgz, progress, updateSource.fetchImpl);
+      u.phase = 'installing';
+      u.message = `Installing Companion ${pkg.version}`;
+      await sendUpdate(ctx);
+      const dir = runner.found.dir;
+      await runner.stop();
+      try {
+        await installTarball(tgz, dir);
+      } finally {
+        await rm(tgz, { force: true });
+        // The new build, or the old one if putting the new one in place failed.
+        runner.start();
+      }
+      u.phase = 'done';
+      u.message = `Companion ${pkg.version} is installed and starting. The previous build is kept in ${dir}.previous.`;
+    } else {
+      const dest = path.join(updateSource.downloads ?? downloadsDir(), file);
+      await download(pkg.uri, dest, progress, updateSource.fetchImpl);
+      (updateSource.open ?? openInstaller)(dest);
+      u.phase = 'done';
+      u.message = `Saved ${dest} and opened it. Quit Companion, then finish the installer; the module connects again once Companion is back.`;
+    }
+  } catch (e) {
+    u.phase = 'error';
+    u.message = `Update failed: ${(e as Error).message}`;
+  }
+  await draw(ctx);
+}
+
 // ---- drawing -------------------------------------------------------------------------------------
 
 function surfaceInfo(id: string) {
@@ -298,7 +421,11 @@ export function snapshot(ctx: C) {
       ? { state: runner.state, pid: runner.pid, startedAt: runner.startedAt, restarts: runner.restarts, lastExit: runner.lastExit, dir: runner.dir, found: !!runner.found, wantedDir: runner.wantedDir, searched: runner.searched, configDir: runner.companionConfigDir, external: runner.state === 'external', desktop: runner.found?.kind === 'desktop', tail: runner.tail.slice(-8) }
       : null,
     self,
-    manageUrl: companionHost ? `http://${companionHost}:${ADMIN_PORT}` : ''
+    manageUrl: companionHost ? `http://${companionHost}:${ADMIN_PORT}` : '',
+    // Only a Companion on this computer: one elsewhere is updated on that computer.
+    download: c.mode === 'local' ? downloadFor(updateSource.platform, updateSource.arch) : null,
+    update: c.mode === 'local' ? updateInfo() : null,
+    moduleBundleUrl: MODULE_BUNDLE_URL
   };
 }
 
@@ -509,7 +636,8 @@ export default defineModule<State, Config>({
       held: new Map(),
       clientHeld: new Map(),
       deckHeld: new Set(),
-      dirty: { deck: new Set(), touch: new Set(), timer: null }
+      dirty: { deck: new Set(), touch: new Set(), timer: null },
+      update: newUpdate()
     };
     await ctx.state.init({});
     await strip(ctx);
@@ -599,6 +727,12 @@ export default defineModule<State, Config>({
       case 'reconnect':
         apply(ctx, true);
         return draw(ctx);
+      case 'update-check':
+        // Asked for by the web Setup page; at most once a minute unless pressed.
+        if (!m.force && rt.update.checkedAt && Date.now() - rt.update.checkedAt < 60_000) return;
+        return checkUpdate(ctx);
+      case 'update-install':
+        return installUpdate(ctx);
       case 'restart':
         if (rt.runner) await rt.runner.restart();
         else apply(ctx, true);

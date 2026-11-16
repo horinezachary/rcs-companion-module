@@ -41,6 +41,20 @@ found, the panel and the web view's Setup page list the places looked in, and Se
 clearing it goes back to searching. The module looks again every 10 seconds, so installing Companion
 needs no restart.
 
+### Updating Companion
+
+In "on this panel" mode, Setup on the web view has an Update Companion card. Check for updates asks
+Bitfocus's public packages API (`api.bitfocus.io/v1/product/companion/packages`, the one CompanionPi's
+updater uses; no Bitfocus sign-in) for the latest stable build for this computer. Nothing is asked
+until someone opens that page, and nothing is downloaded until someone presses Update and confirms.
+
+- Linux and the Pi (`.tar.gz`): the module downloads the build, stops Companion, puts the new build
+  in the install folder (the old one stays beside it as `<folder>.previous`) and starts it again.
+- macOS (`.dmg`) and Windows (`.exe`): the installer is saved to Downloads and opened; the person
+  quits Companion and finishes it.
+
+A Companion running outside the module (a CompanionPi service, say) is updated where it runs.
+
 ### Web view
 
 The web view has Buttons (the touch grid and the Stream Deck, both pressable), Status (connection,
