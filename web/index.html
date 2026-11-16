@@ -142,6 +142,12 @@
         <p>Leave it empty to look in the usual places. A folder can hold Companion's headless build (companion_headless.sh) or a desktop install, such as /Applications/Companion.app or C:\Program Files\Companion.</p>
         <p id="configNote"></p>
       </div>
+      <div class="card" id="updateCard" hidden>
+        <strong>Update Companion</strong>
+        <p id="updateNote"></p>
+        <div class="row"><a class="url" id="updateLink" target="_blank" rel="noopener"></a></div>
+        <p id="updateHow"></p>
+      </div>
       <div class="card">
         <strong>Touch buttons</strong>
         <p>The surface Companion sees on the touch screen. 12×3 and Key size draw buttons about as big as the Stream Deck keys; 12×3 hides the address bar on the panel to fit three rows. Changing it re-registers the surface.</p>
@@ -358,6 +364,21 @@
             : r.wantedDir
               ? `There is no Companion in ${r.wantedDir}.`
               : `Not found. Looked in ${r.searched.join(', ')}.`;
+        const d = s.download;
+        $('updateCard').hidden = !local() || !d;
+        if (d) {
+          $('updateNote').textContent =
+            (s.companion.version ? `Companion ${s.companion.version} is running. ` : '') +
+            'Bitfocus asks you to sign in to your Bitfocus account before it downloads Companion; nothing is downloaded or installed by this module.';
+          $('updateLink').textContent = `Download Companion for ${d.label} ↗`;
+          $('updateLink').href = d.url;
+          $('updateHow').textContent =
+            r?.found && !r.desktop && !r.external
+              ? `Unpack the download into ${r.dir}, then use Restart Companion on the Status page.`
+              : r?.external
+                ? 'Install it like any Companion update. The module connects again once Companion is back.'
+                : 'Install it like any Companion update, then use Restart Companion on the Status page.';
+        }
         $('configNote').textContent =
           !r || r.state === 'external'
             ? ''

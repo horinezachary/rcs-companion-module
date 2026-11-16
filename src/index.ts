@@ -14,7 +14,7 @@ import path from 'node:path';
 import { defineModule, type Ctx, type KeySetParams } from '@rcs/module-sdk';
 import { SatelliteClient, type SurfaceSpec } from './client.js';
 import { DEFAULT_PORT, type KeyState } from './protocol.js';
-import { ADMIN_PORT, CompanionRunner } from './runner.js';
+import { ADMIN_PORT, CompanionRunner, downloadFor } from './runner.js';
 
 export type Mode = '' | 'satellite' | 'local';
 export type GridId = '12x3' | '8x2' | '6x2' | '4x1' | 'keys';
@@ -298,7 +298,9 @@ export function snapshot(ctx: C) {
       ? { state: runner.state, pid: runner.pid, startedAt: runner.startedAt, restarts: runner.restarts, lastExit: runner.lastExit, dir: runner.dir, found: !!runner.found, wantedDir: runner.wantedDir, searched: runner.searched, configDir: runner.companionConfigDir, external: runner.state === 'external', desktop: runner.found?.kind === 'desktop', tail: runner.tail.slice(-8) }
       : null,
     self,
-    manageUrl: companionHost ? `http://${companionHost}:${ADMIN_PORT}` : ''
+    manageUrl: companionHost ? `http://${companionHost}:${ADMIN_PORT}` : '',
+    // Only a Companion on this computer: one elsewhere is updated on that computer.
+    download: c.mode === 'local' ? downloadFor() : null
   };
 }
 

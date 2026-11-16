@@ -275,6 +275,30 @@ export function userConfigDir(platform: NodeJS.Platform = process.platform, env:
   return path.join(env.XDG_CONFIG_HOME || path.join(home, '.config'), 'companion');
 }
 
+/** Bitfocus's download page for Companion on this kind of computer. Bitfocus asks for a sign-in. */
+export const DOWNLOAD_BASE = 'https://bitfocus.io/account/downloads/start';
+
+export interface Download {
+  target: string;
+  /** For people: "macOS (Apple silicon)". */
+  label: string;
+  url: string;
+}
+
+export function downloadFor(platform: NodeJS.Platform = process.platform, arch: string = process.arch, channel = 'stable'): Download | null {
+  const targets: Record<string, [string, string]> = {
+    'darwin-arm64': ['mac-arm', 'macOS (Apple silicon)'],
+    'darwin-x64': ['mac-intel', 'macOS (Intel)'],
+    'linux-arm64': ['linux-arm64', 'Linux and Raspberry Pi (arm64)'],
+    'linux-x64': ['linux-x64', 'Linux (x64)'],
+    'win32-x64': ['win-x64', 'Windows (x64)']
+  };
+  const t = targets[`${platform}-${arch}`];
+  if (!t) return null;
+  const q = new URLSearchParams({ product: 'companion', channel, target: t[0] });
+  return { target: t[0], label: t[1], url: `${DOWNLOAD_BASE}?${q}` };
+}
+
 /** The usual places Companion is installed, for this platform. */
 export function searchDirs(platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env, home = os.homedir()): string[] {
   if (platform === 'darwin') {
