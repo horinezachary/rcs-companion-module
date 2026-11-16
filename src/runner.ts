@@ -27,8 +27,10 @@ export interface RunnerOptions {
   dir: string;
   /** Places to look when dir is empty. Defaults to searchDirs() for this platform. */
   search?: string[];
-  /** Where Companion keeps its buttons, pages and connections. */
+  /** The module's own folder: the pid file, and Companion's config for a headless build. */
   configDir: string;
+  /** Where a desktop install keeps its config. Defaults to the desktop app's own (userConfigDir). */
+  desktopConfigDir?: string;
   adminPort?: number;
   /** Companion's Satellite port, checked with the admin port to see whether a Companion is already running. */
   satellitePort?: number;
@@ -61,6 +63,7 @@ export class CompanionRunner extends EventEmitter {
   /** Every folder looked in, for the "not installed" message. */
   readonly searched: string[];
   readonly configDir: string;
+  readonly desktopConfigDir: string;
   readonly adminPort: number;
   readonly satellitePort: number;
   private readonly restartMs: number;
@@ -70,6 +73,7 @@ export class CompanionRunner extends EventEmitter {
     this.wantedDir = opts.dir;
     this.searched = opts.dir ? [opts.dir] : (opts.search ?? searchDirs());
     this.configDir = opts.configDir;
+    this.desktopConfigDir = opts.desktopConfigDir ?? userConfigDir();
     this.adminPort = opts.adminPort ?? ADMIN_PORT;
     this.satellitePort = opts.satellitePort ?? SATELLITE_PORT;
     this.restartMs = opts.restartMs ?? 2000;
@@ -79,6 +83,15 @@ export class CompanionRunner extends EventEmitter {
   /** Records the running Companion, so one left behind by a module that was killed can be stopped. */
   get pidFile(): string {
     return path.join(this.configDir, 'rcs-companion.pid');
+  }
+
+  /**
+   * Where Companion keeps its buttons, pages and connections. A desktop install shares the desktop
+   * app's config, so starting it here shows the same buttons as opening the app. A headless build
+   * (the panel) keeps its config in the module's data folder.
+   */
+  get companionConfigDir(): string {
+    return this.found?.kind === 'desktop' ? this.desktopConfigDir : this.configDir;
   }
 
   /** The folder Companion runs from: where it was found, else the folder asked for. */
@@ -146,7 +159,7 @@ export class CompanionRunner extends EventEmitter {
     const { command, args, dir } = this.found;
     const child = spawn(
       command,
-      [...args, '--admin-address', '0.0.0.0', '--admin-port', String(this.adminPort), '--config-dir', this.configDir],
+      [...args, '--admin-address', '0.0.0.0', '--admin-port', String(this.adminPort), '--config-dir', this.companionConfigDir],
       // Its own process group, so stopping it also stops the node process the launcher starts.
       { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'], detached: true, windowsHide: true }
     );
@@ -244,9 +257,22 @@ function alive(pid: number): boolean {
 }
 
 export interface Install {
+  /** headless: companion_headless.sh; desktop: the desktop app's bundled server. */
+  kind: 'headless' | 'desktop';
   dir: string;
   command: string;
   args: string[];
+}
+
+/**
+ * Where the Companion desktop app keeps its config: Electron's appData folder plus "companion", or
+ * COMPANION_CONFIG_BASEDIR when set, as Companion's launcher does.
+ */
+export function userConfigDir(platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env, home = os.homedir()): string {
+  if (env.COMPANION_CONFIG_BASEDIR) return env.COMPANION_CONFIG_BASEDIR;
+  if (platform === 'darwin') return path.join(home, 'Library', 'Application Support', 'companion');
+  if (platform === 'win32') return path.win32.join(env.APPDATA || path.win32.join(home, 'AppData', 'Roaming'), 'companion');
+  return path.join(env.XDG_CONFIG_HOME || path.join(home, '.config'), 'companion');
 }
 
 /** The usual places Companion is installed, for this platform. */
@@ -307,11 +333,11 @@ export function findInstall(dirs: string[]): Install | null {
   for (const d of dirs) {
     for (const dir of [d, path.join(d, 'Contents', 'Resources'), path.join(d, 'resources')]) {
       const sh = path.join(dir, LAUNCHER);
-      if (process.platform !== 'win32' && existsSync(sh)) return { dir, command: sh, args: [] };
+      if (process.platform !== 'win32' && existsSync(sh)) return { kind: 'headless', dir, command: sh, args: [] };
       const main = path.join(dir, 'main.js');
       if (!existsSync(main)) continue;
       const node = bundledNode(dir);
-      if (node) return { dir, command: node, args: [main] };
+      if (node) return { kind: 'desktop', dir, command: node, args: [main] };
     }
   }
   return null;

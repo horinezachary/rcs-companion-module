@@ -334,7 +334,7 @@
           if (r.state !== 'external') rows.push(['Config', r.configDir]);
         }
         $('facts').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]));
-        $('restart').hidden = !r;
+        $('restart').hidden = !r || r.state === 'external';
         $('logCard').hidden = !r?.tail?.length;
         $('tail').textContent = (r?.tail ?? []).join('\n');
       }
@@ -358,7 +358,12 @@
             : r.wantedDir
               ? `There is no Companion in ${r.wantedDir}.`
               : `Not found. Looked in ${r.searched.join(', ')}.`;
-        $('configNote').textContent = r && r.state !== 'external' ? `Companion keeps its buttons and connections in ${r.configDir}.` : '';
+        $('configNote').textContent =
+          !r || r.state === 'external'
+            ? ''
+            : r.desktop
+              ? `Companion uses the Companion app's own buttons and connections, in ${r.configDir}.`
+              : `Companion keeps its buttons and connections in ${r.configDir}.`;
         $('grids').replaceChildren(
           ...s.grids.map((g) => {
             const b = el('button', { 'aria-pressed': String(g.id === s.grid.id) }, g.label);

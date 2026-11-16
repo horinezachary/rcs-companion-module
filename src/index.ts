@@ -295,7 +295,7 @@ export function snapshot(ctx: C) {
     grid: { id: c.grid, ...GRIDS[c.grid] },
     grids: Object.entries(GRIDS).map(([id, g]) => ({ id, label: g.label })),
     runner: runner
-      ? { state: runner.state, pid: runner.pid, startedAt: runner.startedAt, restarts: runner.restarts, lastExit: runner.lastExit, dir: runner.dir, found: !!runner.found, wantedDir: runner.wantedDir, searched: runner.searched, configDir: runner.configDir, tail: runner.tail.slice(-8) }
+      ? { state: runner.state, pid: runner.pid, startedAt: runner.startedAt, restarts: runner.restarts, lastExit: runner.lastExit, dir: runner.dir, found: !!runner.found, wantedDir: runner.wantedDir, searched: runner.searched, configDir: runner.companionConfigDir, external: runner.state === 'external', desktop: runner.found?.kind === 'desktop', tail: runner.tail.slice(-8) }
       : null,
     self,
     manageUrl: companionHost ? `http://${companionHost}:${ADMIN_PORT}` : ''

@@ -376,7 +376,7 @@
           if (r.state !== 'external') rows.push(['Config', r.configDir]);
         }
         $('facts').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', { title: v }, v)]));
-        $('restart').hidden = !r;
+        $('restart').hidden = !r || r.state === 'external';
         $('tail').hidden = !r?.tail?.length;
         $('tail').textContent = (r?.tail ?? []).join('\n');
       }

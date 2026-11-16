@@ -31,7 +31,12 @@ With no folder set, the module looks in the usual install places and uses the fi
 A desktop install is started from its bundled server: `main.js` with the node in `node-runtimes/` that its
 `package.json` asks for (Companion 5 ships several, such as `node22` and `node26`). If a Companion is
 already running on the computer (the desktop app, say), the module uses that one through its Satellite
-port instead of starting a second one. If nothing is
+port instead of starting a second one.
+
+A desktop install started by the module uses the desktop app's own config (`~/Library/Application
+Support/companion` on macOS, `%APPDATA%\companion` on Windows, `~/.config/companion` on Linux, or
+`COMPANION_CONFIG_BASEDIR`), so it shows the same buttons as opening the app, and a module Reset never
+touches it. Only the headless build, as on the panel, keeps its config in the module's data folder. If nothing is
 found, the panel and the web view's Setup page list the places looked in, and Setup takes a folder;
 clearing it goes back to searching. The module looks again every 10 seconds, so installing Companion
 needs no restart.
@@ -58,7 +63,7 @@ Some details that follow from that:
   keys and tiles are released.
 - Brightness stays with the system (`BRIGHTNESS=false`), and Companion's own PIN lock is drawn by
   Companion on the keys.
-- In "on this panel" mode, Companion keeps its config in the module's data folder
+- In "on this panel" mode, the headless build keeps its config in the module's data folder
   (`<data>/companion`). Companion itself may run its own startup triggers when it starts: that is
   Companion's configuration, not something this module sends.
 
