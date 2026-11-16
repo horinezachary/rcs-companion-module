@@ -11,7 +11,7 @@ import mod, { KEY, surfaceIds, type Config, type State } from '../src/index.js';
 import { MockCompanion } from '../src/mock.js';
 import { bitmapToPng, encodePng } from '../src/png.js';
 import { formatLine, LineReader, parseLine } from '../src/protocol.js';
-import { bundledNode, CompanionRunner, findInstall, searchDirs } from '../src/runner.js';
+import { bundledNode, CompanionRunner, findInstall, searchDirs, userConfigDir } from '../src/runner.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let mock: MockCompanion | null = null;
@@ -363,7 +363,7 @@ describe('Companion on this panel', () => {
     await mkdir(path.join(res, 'node-runtimes', 'main', 'bin'), { recursive: true });
     await writeFile(path.join(res, 'main.js'), '');
     await writeFile(path.join(res, 'node-runtimes', 'main', 'bin', 'node'), '');
-    expect(findInstall([path.join(root, 'nothing'), app])).toEqual({ dir: res, command: path.join(res, 'node-runtimes', 'main', 'bin', 'node'), args: [path.join(res, 'main.js')] });
+    expect(findInstall([path.join(root, 'nothing'), app])).toEqual({ kind: 'desktop', dir: res, command: path.join(res, 'node-runtimes', 'main', 'bin', 'node'), args: [path.join(res, 'main.js')] });
     const headless = await fakeInstall(0);
     expect(findInstall([app.replace('Companion.app', 'x'), headless])).toMatchObject({ dir: headless, command: path.join(headless, 'companion_headless.sh') });
     expect(findInstall([path.join(root, 'nothing')])).toBeNull();
@@ -382,7 +382,28 @@ describe('Companion on this panel', () => {
     await writeFile(path.join(res, 'package.json'), JSON.stringify({ name: 'companion', engines: { node: '22.1.0' } }));
     expect(bundledNode(res)).toBe(path.join(res, 'node-runtimes', 'node22', 'bin', 'node'));
     await writeFile(path.join(res, 'package.json'), JSON.stringify({ name: 'companion' }));
-    expect(findInstall([path.join(root, 'Companion.app')])).toEqual({ dir: res, command: path.join(res, 'node-runtimes', 'node26', 'bin', 'node'), args: [path.join(res, 'main.js')] });
+    expect(findInstall([path.join(root, 'Companion.app')])).toEqual({ kind: 'desktop', dir: res, command: path.join(res, 'node-runtimes', 'node26', 'bin', 'node'), args: [path.join(res, 'main.js')] });
+  });
+
+  it("starts a desktop install with the desktop app's own config", async () => {
+    expect(userConfigDir('darwin', {}, '/Users/zac')).toBe('/Users/zac/Library/Application Support/companion');
+    expect(userConfigDir('win32', { APPDATA: 'C:\\Users\\zac\\AppData\\Roaming' }, 'C:\\Users\\zac')).toBe('C:\\Users\\zac\\AppData\\Roaming\\companion');
+    expect(userConfigDir('linux', {}, '/home/zac')).toBe('/home/zac/.config/companion');
+    expect(userConfigDir('darwin', { COMPANION_CONFIG_BASEDIR: '/srv/companion' }, '/Users/zac')).toBe('/srv/companion');
+
+    const root = await mkdtemp(path.join(os.tmpdir(), 'rcs-desk-'));
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const res = path.join(root, 'Companion.app', 'Contents', 'Resources');
+    await mkdir(path.join(res, 'node-runtimes', 'node26', 'bin'), { recursive: true });
+    await writeFile(path.join(res, 'main.js'), '');
+    await writeFile(path.join(res, 'node-runtimes', 'node26', 'bin', 'node'), '');
+    const desk = new CompanionRunner({ dir: path.join(root, 'Companion.app'), configDir: path.join(root, 'module'), desktopConfigDir: path.join(root, 'app-config') });
+    desk.found = findInstall(desk.searched);
+    expect(desk.companionConfigDir).toBe(path.join(root, 'app-config'));
+    const headless = await fakeInstall(0);
+    const panel = new CompanionRunner({ dir: headless, configDir: path.join(root, 'module'), desktopConfigDir: path.join(root, 'app-config') });
+    panel.found = findInstall(panel.searched);
+    expect(panel.companionConfigDir).toBe(path.join(root, 'module'));
   });
 
   it('uses a Companion that is already running instead of starting another', async () => {
