@@ -11,7 +11,7 @@ import mod, { KEY, surfaceIds, type Config, type State } from '../src/index.js';
 import { MockCompanion } from '../src/mock.js';
 import { bitmapToPng, encodePng } from '../src/png.js';
 import { formatLine, LineReader, parseLine } from '../src/protocol.js';
-import { CompanionRunner, findInstall, searchDirs } from '../src/runner.js';
+import { bundledNode, CompanionRunner, findInstall, searchDirs } from '../src/runner.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let mock: MockCompanion | null = null;
@@ -367,6 +367,35 @@ describe('Companion on this panel', () => {
     const headless = await fakeInstall(0);
     expect(findInstall([app.replace('Companion.app', 'x'), headless])).toMatchObject({ dir: headless, command: path.join(headless, 'companion_headless.sh') });
     expect(findInstall([path.join(root, 'nothing')])).toBeNull();
+  });
+
+  it('finds the node a Companion 5 desktop app asks for, with no main runtime', async () => {
+    // Companion 5.1 on macOS: node-runtimes/{node18,node22,node26}, no "main" link, engines.node 26.
+    const root = await mkdtemp(path.join(os.tmpdir(), 'rcs-find5-'));
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const res = path.join(root, 'Companion.app', 'Contents', 'Resources');
+    for (const n of ['node18', 'node22', 'node26']) {
+      await mkdir(path.join(res, 'node-runtimes', n, 'bin'), { recursive: true });
+      await writeFile(path.join(res, 'node-runtimes', n, 'bin', 'node'), '');
+    }
+    await writeFile(path.join(res, 'main.js'), '');
+    await writeFile(path.join(res, 'package.json'), JSON.stringify({ name: 'companion', engines: { node: '22.1.0' } }));
+    expect(bundledNode(res)).toBe(path.join(res, 'node-runtimes', 'node22', 'bin', 'node'));
+    await writeFile(path.join(res, 'package.json'), JSON.stringify({ name: 'companion' }));
+    expect(findInstall([path.join(root, 'Companion.app')])).toEqual({ dir: res, command: path.join(res, 'node-runtimes', 'node26', 'bin', 'node'), args: [path.join(res, 'main.js')] });
+  });
+
+  it('uses a Companion that is already running instead of starting another', async () => {
+    const busy = net.createServer().listen(0, '127.0.0.1');
+    await new Promise((r) => busy.once('listening', r));
+    cleanup.push(() => new Promise<void>((r) => busy.close(() => r())));
+    const port = (busy.address() as net.AddressInfo).port;
+    const dir = await fakeInstall(0);
+    const runner = new CompanionRunner({ dir, configDir: path.join(dir, 'config'), satellitePort: port, adminPort: port });
+    cleanup.push(() => runner.stop(500));
+    runner.start();
+    await until(() => runner.state === 'external');
+    expect(runner.pid).toBeNull();
   });
 
   it('runs the first Companion it finds when no folder is set', async () => {

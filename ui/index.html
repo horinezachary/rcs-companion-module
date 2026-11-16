@@ -335,6 +335,9 @@
             text = r.wantedDir
               ? `There is no Companion in ${r.wantedDir}. Change the folder on the web view's Setup page, or connect to a Companion on another computer.`
               : `Looked in ${r.searched.join(', ')}. Install Companion, set its folder on the web view's Setup page, or connect to a Companion on another computer.`;
+          } else if (r?.state === 'external') {
+            title = 'Connecting to Companion';
+            text = 'Companion is already running on this computer, so the module uses that one instead of starting its own.';
           } else if (r && r.state !== 'running') {
             title = 'Starting Companion';
             text = r.lastExit ? `Companion ${r.lastExit}. Starting it again.` : 'This takes a few seconds.';
@@ -367,10 +370,10 @@
           ['Surface: touch', surf(s.surfaces.touch)]
         ];
         if (r) {
-          rows.push(['Process', r.pid ? `pid ${r.pid} · up ${ago(r.startedAt)}` : r.state]);
+          rows.push(['Process', r.state === 'external' ? 'already running (started outside the module)' : r.pid ? `pid ${r.pid} · up ${ago(r.startedAt)}` : r.state]);
           rows.push(['Restarts', `${r.restarts} since start${r.lastExit ? ' · last ' + r.lastExit : ''}`]);
           rows.push(['Installed in', r.found ? r.dir : 'not found']);
-          rows.push(['Config', r.configDir]);
+          if (r.state !== 'external') rows.push(['Config', r.configDir]);
         }
         $('facts').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', { title: v }, v)]));
         $('restart').hidden = !r;

@@ -199,6 +199,7 @@ function report(ctx: C): void {
   if (!client) return void ctx.status('disconnected');
   // A Companion someone started by hand on this panel still counts.
   if (client.connection === 'connected') return void ctx.status('connected', client.statusText);
+  if (runner?.state === 'external') return void ctx.status('connecting', 'Companion is already running on this computer; connecting to it');
   if (runner?.state === 'missing') return void ctx.status('disconnected', runner.wantedDir ? `Companion is not in ${runner.wantedDir}` : 'Companion is not installed on this panel');
   if (runner && runner.state !== 'running') {
     return void ctx.status('connecting', runner.state === 'restarting' ? `Companion ${runner.lastExit}; restarting` : 'Starting Companion');

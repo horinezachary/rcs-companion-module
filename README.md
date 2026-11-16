@@ -28,7 +28,10 @@ With no folder set, the module looks in the usual install places and uses the fi
 - macOS: `/Applications/Companion.app`, `~/Applications/Companion.app`, `/opt/companion`.
 - Windows: `Companion` under `%ProgramFiles%`, `%ProgramFiles(x86)%` and `%LOCALAPPDATA%\Programs`.
 
-A desktop install is started from its bundled server (`main.js` and node runtime). If nothing is
+A desktop install is started from its bundled server: `main.js` with the node in `node-runtimes/` that its
+`package.json` asks for (Companion 5 ships several, such as `node22` and `node26`). If a Companion is
+already running on the computer (the desktop app, say), the module uses that one through its Satellite
+port instead of starting a second one. If nothing is
 found, the panel and the web view's Setup page list the places looked in, and Setup takes a folder;
 clearing it goes back to searching. The module looks again every 10 seconds, so installing Companion
 needs no restart.

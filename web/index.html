@@ -328,10 +328,10 @@
           ['Surface: touch', `${s.surfaces.touch.id} · ${sf(s.surfaces.touch)}`]
         ];
         if (r) {
-          rows.push(['Process', r.pid ? `pid ${r.pid} · up ${ago(r.startedAt)}` : r.state]);
+          rows.push(['Process', r.state === 'external' ? 'already running (started outside the module)' : r.pid ? `pid ${r.pid} · up ${ago(r.startedAt)}` : r.state]);
           rows.push(['Restarts', `${r.restarts} since start${r.lastExit ? ' · last ' + r.lastExit : ''}`]);
           rows.push(['Installed in', r.found ? r.dir : 'not found']);
-          rows.push(['Config', r.configDir]);
+          if (r.state !== 'external') rows.push(['Config', r.configDir]);
         }
         $('facts').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]));
         $('restart').hidden = !r;
@@ -351,12 +351,14 @@
         const r = s.runner;
         $('dirNote').textContent = !r
           ? ''
-          : r.found
+          : r.state === 'external'
+            ? 'Companion is already running on this computer (the desktop app, say), so the module uses it instead of starting its own.'
+            : r.found
             ? `Running Companion from ${r.dir}.`
             : r.wantedDir
               ? `There is no Companion in ${r.wantedDir}.`
               : `Not found. Looked in ${r.searched.join(', ')}.`;
-        $('configNote').textContent = r ? `Companion keeps its buttons and connections in ${r.configDir}.` : '';
+        $('configNote').textContent = r && r.state !== 'external' ? `Companion keeps its buttons and connections in ${r.configDir}.` : '';
         $('grids').replaceChildren(
           ...s.grids.map((g) => {
             const b = el('button', { 'aria-pressed': String(g.id === s.grid.id) }, g.label);
