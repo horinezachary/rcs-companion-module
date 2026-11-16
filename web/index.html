@@ -145,10 +145,18 @@
       <div class="card" id="updateCard" hidden>
         <strong>Update Companion</strong>
         <p id="updateNote"></p>
-        <div class="row"><a class="url" id="updateLink" target="_blank" rel="noopener"></a></div>
+        <progress id="updateBar" max="1" value="0" hidden style="width: 100%"></progress>
+        <p id="updateMsg"></p>
+        <div class="row">
+          <rcs-button id="updateInstall" variant="primary" size="small" hidden>Update</rcs-button>
+          <rcs-button id="updateCheck" size="small">Check for updates</rcs-button>
+        </div>
         <p id="updateHow"></p>
-        <div class="row"><a class="url" id="bundleLink" target="_blank" rel="noopener">Download the offline module bundle ↗</a></div>
-        <p>For a Companion with no internet: every Companion module in one file. Import it on Companion's Modules page.</p>
+        <p class="small">
+          Or download it yourself: <a class="url" id="updateLink" target="_blank" rel="noopener"></a> ·
+          <a class="url" id="bundleLink" target="_blank" rel="noopener">offline module bundle ↗</a> (every Companion module in one file, for a Companion with
+          no internet; import it on Companion's Modules page).
+        </p>
       </div>
       <div class="card">
         <strong>Touch buttons</strong>
@@ -367,20 +375,37 @@
               ? `There is no Companion in ${r.wantedDir}.`
               : `Not found. Looked in ${r.searched.join(', ')}.`;
         const d = s.download;
-        $('updateCard').hidden = !local() || !d;
-        if (d) {
-          $('updateNote').textContent =
-            (s.companion.version ? `Companion ${s.companion.version} is running. ` : '') +
-            'Bitfocus asks you to sign in to your Bitfocus account before it downloads Companion; nothing is downloaded or installed by this module.';
-          $('updateLink').textContent = `Download Companion for ${d.label} ↗`;
+        const u = s.update;
+        $('updateCard').hidden = !local() || !d || !u;
+        if (d && u) {
+          const mb = (n) => `${Math.round(n / 1e6)} MB`;
+          const busy = u.phase === 'downloading' || u.phase === 'installing';
+          $('updateNote').textContent = u.checking
+            ? 'Checking Bitfocus for the latest Companion…'
+            : !u.latest
+              ? `Installed: ${u.installed || 'unknown'}.`
+              : u.available
+                ? `Companion ${u.latest.version} is available${u.latest.published ? ` (${new Date(u.latest.published).toLocaleDateString()})` : ''}. Installed: ${u.installed || 'unknown'}.`
+                : `Companion ${u.installed || u.latest.version} is up to date (latest is ${u.latest.version}).`;
+          $('updateBar').hidden = !busy;
+          $('updateBar').max = u.total || 1;
+          $('updateBar').value = u.phase === 'installing' ? u.total || 1 : u.done;
+          $('updateMsg').textContent = u.blocked || (busy && u.total ? `${u.message} · ${mb(u.done)} of ${mb(u.total)}` : u.message);
+          $('updateInstall').hidden = !u.latest || !u.available || !!u.blocked || busy;
+          $('updateInstall').textContent = `Update to ${u.latest?.version ?? ''}`;
+          $('updateCheck').hidden = busy;
+          $('updateHow').textContent = !u.latest
+            ? ''
+            : u.how === 'replace'
+              ? 'Update downloads the new build, stops Companion, puts the new build in place and starts it again. Buttons and connections are kept.'
+              : 'Update downloads the installer to your Downloads folder and opens it. Quit Companion, then finish the installer.';
+          $('updateLink').textContent = `${d.label} ↗`;
           $('updateLink').href = d.url;
           $('bundleLink').href = s.moduleBundleUrl;
-          $('updateHow').textContent =
-            r?.found && !r.desktop && !r.external
-              ? `Unpack the download into ${r.dir}, then use Restart Companion on the Status page.`
-              : r?.external
-                ? 'Install it like any Companion update. The module connects again once Companion is back.'
-                : 'Install it like any Companion update, then use Restart Companion on the Status page.';
+          if (!u.checkedAt && !u.checking && !askedUpdate) {
+            askedUpdate = true;
+            rcs.send({ type: 'update-check' });
+          }
         }
         $('configNote').textContent =
           !r || r.state === 'external'
@@ -427,6 +452,18 @@
       $('pickLocal').onclick = () => rcs.send({ type: 'choose', mode: 'local' });
       $('pickSatellite').onclick = () => rcs.send({ type: 'choose', mode: 'satellite' });
       $('reconnect').onclick = () => rcs.send({ type: 'reconnect' });
+      let askedUpdate = false;
+      $('updateCheck').onclick = () => rcs.send({ type: 'update-check', force: true });
+      $('updateInstall').onclick = () => {
+        const u = s.update;
+        ask(
+          u.how === 'replace'
+            ? `Update Companion to ${u.latest.version}? It downloads about 400 MB, then Companion stops for a minute while the new build goes in. Buttons stop working until it is back.`
+            : `Download Companion ${u.latest.version} (about 400 MB) to Downloads and open the installer?`,
+          'Update',
+          () => rcs.send({ type: 'update-install' })
+        );
+      };
       $('restart').onclick = () => ask('Restart Companion? Buttons stop working for a few seconds while it starts again.', 'Restart', () => rcs.send({ type: 'restart' }));
       $('changeMode').onclick = () =>
         ask(
