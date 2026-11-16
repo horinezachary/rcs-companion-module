@@ -289,9 +289,10 @@ export function downloadFor(platform: NodeJS.Platform = process.platform, arch: 
   const targets: Record<string, [string, string]> = {
     'darwin-arm64': ['mac-arm', 'macOS (Apple silicon)'],
     'darwin-x64': ['mac-intel', 'macOS (Intel)'],
-    'linux-arm64': ['linux-arm64', 'Linux and Raspberry Pi (arm64)'],
-    'linux-x64': ['linux-x64', 'Linux (x64)'],
-    'win32-x64': ['win-x64', 'Windows (x64)']
+    'linux-arm64': ['linux-arm64-tgz', 'Linux and Raspberry Pi (arm64)'],
+    'linux-x64': ['linux-tgz', 'Linux (x64)'],
+    'win32-x64': ['win-x64', 'Windows (x64)'],
+    'win32-arm64': ['win-arm64', 'Windows (Arm)']
   };
   const t = targets[`${platform}-${arch}`];
   if (!t) return null;

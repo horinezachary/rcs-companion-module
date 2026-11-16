@@ -412,7 +412,10 @@ describe('Companion on this panel', () => {
       label: 'macOS (Apple silicon)',
       url: 'https://bitfocus.io/account/downloads/start?product=companion&channel=stable&target=mac-arm'
     });
-    expect(downloadFor('linux', 'arm64')?.target).toBe('linux-arm64');
+    expect(downloadFor('linux', 'arm64')?.target).toBe('linux-arm64-tgz');
+    expect(downloadFor('linux', 'x64')?.target).toBe('linux-tgz');
+    expect(downloadFor('darwin', 'x64')?.target).toBe('mac-intel');
+    expect(downloadFor('win32', 'arm64')?.target).toBe('win-arm64');
     expect(downloadFor('win32', 'x64')?.target).toBe('win-x64');
     expect(downloadFor('freebsd', 'x64')).toBeNull();
   });
