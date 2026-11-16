@@ -14,7 +14,7 @@ import path from 'node:path';
 import { defineModule, type Ctx, type KeySetParams } from '@rcs/module-sdk';
 import { SatelliteClient, type SurfaceSpec } from './client.js';
 import { DEFAULT_PORT, type KeyState } from './protocol.js';
-import { ADMIN_PORT, CompanionRunner, downloadFor } from './runner.js';
+import { ADMIN_PORT, CompanionRunner, downloadFor, MODULE_BUNDLE_URL } from './runner.js';
 
 export type Mode = '' | 'satellite' | 'local';
 export type GridId = '12x3' | '8x2' | '6x2' | '4x1' | 'keys';
@@ -300,7 +300,8 @@ export function snapshot(ctx: C) {
     self,
     manageUrl: companionHost ? `http://${companionHost}:${ADMIN_PORT}` : '',
     // Only a Companion on this computer: one elsewhere is updated on that computer.
-    download: c.mode === 'local' ? downloadFor() : null
+    download: c.mode === 'local' ? downloadFor() : null,
+    moduleBundleUrl: MODULE_BUNDLE_URL
   };
 }
 

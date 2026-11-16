@@ -11,7 +11,7 @@ import mod, { KEY, surfaceIds, type Config, type State } from '../src/index.js';
 import { MockCompanion } from '../src/mock.js';
 import { bitmapToPng, encodePng } from '../src/png.js';
 import { formatLine, LineReader, parseLine } from '../src/protocol.js';
-import { bundledNode, CompanionRunner, downloadFor, findInstall, searchDirs, userConfigDir } from '../src/runner.js';
+import { bundledNode, CompanionRunner, downloadFor, MODULE_BUNDLE_URL, findInstall, searchDirs, userConfigDir } from '../src/runner.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let mock: MockCompanion | null = null;
@@ -418,6 +418,7 @@ describe('Companion on this panel', () => {
     expect(downloadFor('win32', 'arm64')?.target).toBe('win-arm64');
     expect(downloadFor('win32', 'x64')?.target).toBe('win-x64');
     expect(downloadFor('freebsd', 'x64')).toBeNull();
+    expect(MODULE_BUNDLE_URL).toBe('https://bitfocus.io/account/downloads/start?product=companion-offline-module-bundle&channel=stable&target=generic');
   });
 
   it('uses a Companion that is already running instead of starting another', async () => {

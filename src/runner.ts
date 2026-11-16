@@ -285,6 +285,9 @@ export interface Download {
   url: string;
 }
 
+/** Every Companion module in one file, for a Companion with no internet (imported on its Modules page). */
+export const MODULE_BUNDLE_URL = `${DOWNLOAD_BASE}?${new URLSearchParams({ product: 'companion-offline-module-bundle', channel: 'stable', target: 'generic' })}`;
+
 export function downloadFor(platform: NodeJS.Platform = process.platform, arch: string = process.arch, channel = 'stable'): Download | null {
   const targets: Record<string, [string, string]> = {
     'darwin-arm64': ['mac-arm', 'macOS (Apple silicon)'],

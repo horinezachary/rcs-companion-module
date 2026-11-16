@@ -147,6 +147,8 @@
         <p id="updateNote"></p>
         <div class="row"><a class="url" id="updateLink" target="_blank" rel="noopener"></a></div>
         <p id="updateHow"></p>
+        <div class="row"><a class="url" id="bundleLink" target="_blank" rel="noopener">Download the offline module bundle ↗</a></div>
+        <p>For a Companion with no internet: every Companion module in one file. Import it on Companion's Modules page.</p>
       </div>
       <div class="card">
         <strong>Touch buttons</strong>
@@ -372,6 +374,7 @@
             'Bitfocus asks you to sign in to your Bitfocus account before it downloads Companion; nothing is downloaded or installed by this module.';
           $('updateLink').textContent = `Download Companion for ${d.label} ↗`;
           $('updateLink').href = d.url;
+          $('bundleLink').href = s.moduleBundleUrl;
           $('updateHow').textContent =
             r?.found && !r.desktop && !r.external
               ? `Unpack the download into ${r.dir}, then use Restart Companion on the Status page.`
