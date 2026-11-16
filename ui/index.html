@@ -165,7 +165,8 @@
             </div>
           </div>
           <div class="item" id="localItem">
-            <div class="t"><div class="n">Companion folder</div><div class="s mono" id="dirNote"></div></div>
+            <div class="t"><div class="n">Companion folder</div><div class="s" id="dirNote"></div></div>
+            <rcs-button id="autoDir" size="small" hidden>Look in the usual places</rcs-button>
           </div>
           <div class="item wide">
             <div class="t">
@@ -331,7 +332,9 @@
           let text = s.statusText || `Looking for Companion at ${s.companion.address || s.config.host}`;
           if (r?.state === 'missing') {
             title = 'Companion is not installed on this panel';
-            text = `The module looks for Companion's headless build in ${r.dir}. Install it there, or connect to a Companion on another computer in Setup.`;
+            text = r.wantedDir
+              ? `There is no Companion in ${r.wantedDir}. Change the folder on the web view's Setup page, or connect to a Companion on another computer.`
+              : `Looked in ${r.searched.join(', ')}. Install Companion, set its folder on the web view's Setup page, or connect to a Companion on another computer.`;
           } else if (r && r.state !== 'running') {
             title = 'Starting Companion';
             text = r.lastExit ? `Companion ${r.lastExit}. Starting it again.` : 'This takes a few seconds.';
@@ -366,7 +369,7 @@
         if (r) {
           rows.push(['Process', r.pid ? `pid ${r.pid} · up ${ago(r.startedAt)}` : r.state]);
           rows.push(['Restarts', `${r.restarts} since start${r.lastExit ? ' · last ' + r.lastExit : ''}`]);
-          rows.push(['Installed in', r.dir]);
+          rows.push(['Installed in', r.found ? r.dir : 'not found']);
           rows.push(['Config', r.configDir]);
         }
         $('facts').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', { title: v }, v)]));
@@ -380,7 +383,13 @@
         $('modeNote').textContent = local ? 'Companion, on this panel' : `Companion Satellite, connected to ${s.config.host}`;
         $('remoteItem').hidden = local;
         $('localItem').hidden = !local;
-        $('dirNote').textContent = s.config.companionDir;
+        const r = s.runner;
+        $('dirNote').textContent = !r
+          ? ''
+          : r.found
+            ? `${r.wantedDir ? 'Set to' : 'Found in'} ${r.dir}. Change it on the web view's Setup page.`
+            : `${r.wantedDir ? `Nothing in ${r.wantedDir}.` : 'Not found in the usual places.'} Set the folder on the web view's Setup page.`;
+        $('autoDir').hidden = !s.config.companionDir;
         if (!$('addr').matches('[editing]')) $('addr').value = s.config.host;
         if (!$('port').matches('[editing]')) $('port').value = String(s.config.port);
         $('grids').replaceChildren(
@@ -427,6 +436,7 @@
           'Change',
           () => rcs.send({ type: 'choose', mode: '' })
         );
+      $('autoDir').onclick = () => rcs.send({ type: 'config', config: { companionDir: '' } });
       $('addr').addEventListener('change', (e) => rcs.send({ type: 'config', config: { host: e.detail } }));
       $('port').addEventListener('change', (e) => rcs.send({ type: 'config', config: { port: Number(e.detail) } }));
 
@@ -440,7 +450,7 @@
 
       await rcs.ready();
       rcs.on('message', (m) => {
-        if (m?.type === 'tiles') return onTiles(m);
+        if (m?.type === 'tiles') return m.surface === 'keys' ? undefined : onTiles(m); // the keys draw themselves
         if (m?.type !== 'snapshot') return;
         const rebuild = !s || s.grid.id !== m.grid.id || s.phase !== m.phase;
         s = m;

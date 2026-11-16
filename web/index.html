@@ -1,0 +1,428 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { padding: 24px; }
+      [hidden] { display: none !important; }
+      section { display: flex; flex-direction: column; gap: 18px; max-width: 1500px; }
+      header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+      h2 { margin: 0; font-size: 22px; }
+      h3 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; color: var(--rcs-muted); }
+      p, .note { margin: 0; color: var(--rcs-muted); font-size: 15px; line-height: 1.5; }
+      .grow { flex: 1; }
+      .mono { font-family: var(--rcs-mono); }
+      .url { font: 600 15px var(--rcs-mono); color: var(--rcs-accent); }
+      .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+      .card { border: 1px solid var(--rcs-border); border-radius: 14px; background: var(--rcs-surface); padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+      .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; }
+      .card .t { font-size: 20px; font-weight: 700; }
+      .card .k { font: 600 12px var(--rcs-mono); color: var(--rcs-muted); letter-spacing: 0.06em; margin-left: 8px; }
+
+      /* surfaces */
+      .surfaces { display: flex; gap: 32px; flex-wrap: wrap; align-items: flex-start; }
+      .surface { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+      .surface.touch { flex: 1 1 760px; }
+      .grid { display: grid; gap: 8px; }
+      .tile { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: #000; border: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex; align-items: center; justify-content: center; padding: 0; color: #fff; touch-action: none; user-select: none; cursor: pointer; }
+      .touch .tile.wide { aspect-ratio: auto; min-height: 96px; }
+      .tile img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+      .tile span { white-space: pre-line; text-align: center; font: 700 14px var(--rcs-font); padding: 4px; pointer-events: none; }
+      .tile.pressed { outline: 3px solid var(--rcs-accent); outline-offset: -3px; }
+      .tile.empty { background: var(--rcs-bg); cursor: default; }
+      .keys .grid { grid-template-columns: repeat(5, 72px); }
+
+      /* status */
+      dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 10px 20px; font-size: 15px; }
+      dt { color: var(--rcs-muted); white-space: nowrap; }
+      dd { margin: 0; font-family: var(--rcs-mono); overflow-wrap: anywhere; }
+      pre { margin: 0; font: 12px/1.5 var(--rcs-mono); color: var(--rcs-muted); white-space: pre-wrap; max-height: 360px; overflow: auto; }
+
+      /* setup */
+      label.field { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--rcs-muted); }
+      input[type=text] { min-height: 44px; border-radius: 10px; border: 1px solid var(--rcs-border); background: var(--rcs-bg); color: var(--rcs-text);
+        padding: 0 12px; font: 16px var(--rcs-mono); min-width: 0; box-sizing: border-box; }
+      input[type=text]:focus { outline: 2px solid var(--rcs-accent); border-color: transparent; }
+      #addr { width: 280px; }
+      #port { width: 120px; }
+      #dir { width: 360px; }
+      .seg { display: inline-flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--rcs-bg); border: 1px solid var(--rcs-border); flex-wrap: wrap; }
+      .seg button { height: 40px; padding: 0 16px; border-radius: 9px; border: none; background: transparent; color: var(--rcs-text); font: 600 15px var(--rcs-font); cursor: pointer; }
+      .seg button[aria-pressed='true'] { background: var(--rcs-accent); color: var(--rcs-bg); }
+    </style>
+  </head>
+  <body>
+    <!-- The web view's pages. Navigation here never moves the panel; presses here are real presses,
+         sent to Companion like a touch on the panel. -->
+    <header>
+      <h2 id="title">Companion</h2>
+      <rcs-status id="pill" connection="disconnected"></rcs-status>
+      <span class="note" id="manageLabel"></span>
+      <a class="url" id="manageUrl" target="_blank" rel="noopener"></a>
+    </header>
+
+    <!-- Before Companion is chosen: the same choice the panel offers -->
+    <section id="choose" hidden>
+      <p>Choose how this panel runs Companion. The keys and the touch screen become two surfaces in Companion.</p>
+      <div class="cards">
+        <div class="card">
+          <div><span class="t">Companion on this panel</span><span class="k">KEY 6</span></div>
+          <p>Runs Companion here. Buttons, connections and pages are set up in a browser at this panel's address, port 8000.</p>
+          <div class="row"><rcs-button id="pickLocal" variant="primary">Run Companion here</rcs-button></div>
+        </div>
+        <div class="card">
+          <div><span class="t">Companion Satellite</span><span class="k">KEY 8</span></div>
+          <p>Connects to a Companion already running on another computer. Buttons are set up on that computer.</p>
+          <div class="row"><rcs-button id="pickSatellite">Connect to Companion</rcs-button></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="page-buttons" hidden>
+      <p id="offline" hidden></p>
+      <div class="surfaces" id="surfaces">
+        <div class="surface touch">
+          <div class="row"><h3>TOUCH SCREEN</h3><span class="note mono" id="touchName"></span></div>
+          <div class="grid" id="touchGrid" role="group" aria-label="Touch buttons"></div>
+        </div>
+        <div class="surface keys">
+          <div class="row"><h3>STREAM DECK</h3><span class="note mono" id="keysName"></span></div>
+          <div class="grid" id="keysGrid" role="group" aria-label="Stream Deck keys"></div>
+        </div>
+      </div>
+      <p>Clicking a button here presses it in Companion, just like touching it on the panel.</p>
+    </section>
+
+    <section id="page-status" hidden>
+      <div class="cards">
+        <div class="card">
+          <h3 id="manageCaps"></h3>
+          <a class="url" id="manageUrl2" target="_blank" rel="noopener" style="font-size: 20px"></a>
+          <p id="manageNote"></p>
+          <div class="row">
+            <rcs-button id="reconnect" size="small">Reconnect</rcs-button>
+            <rcs-button id="restart" size="small" hidden>Restart Companion</rcs-button>
+          </div>
+        </div>
+        <div class="card"><dl id="facts"></dl></div>
+      </div>
+      <div class="card" id="logCard" hidden>
+        <h3>COMPANION OUTPUT</h3>
+        <pre id="tail"></pre>
+      </div>
+    </section>
+
+    <section id="page-setup" hidden>
+      <div class="card">
+        <div class="row">
+          <div class="grow">
+            <strong>Runs</strong>
+            <p id="modeNote"></p>
+          </div>
+          <rcs-button id="changeMode" size="small">Change…</rcs-button>
+        </div>
+      </div>
+      <div class="card" id="remoteCard">
+        <strong>Companion</strong>
+        <div class="row" style="align-items: flex-end">
+          <label class="field">Address<input type="text" id="addr" inputmode="decimal" maxlength="253" autocomplete="off" spellcheck="false" /></label>
+          <label class="field">Port<input type="text" id="port" inputmode="numeric" maxlength="5" autocomplete="off" /></label>
+          <rcs-button id="saveRemote" variant="primary" size="small">Save</rcs-button>
+        </div>
+        <p>Companion's Satellite port is 16622 unless it was changed in Companion's settings.</p>
+      </div>
+      <div class="card" id="localCard">
+        <strong>Companion folder</strong>
+        <div class="row" style="align-items: flex-end">
+          <label class="field">Folder<input type="text" id="dir" maxlength="512" autocomplete="off" spellcheck="false" placeholder="Look in the usual places" /></label>
+          <rcs-button id="saveDir" variant="primary" size="small">Save</rcs-button>
+        </div>
+        <p id="dirNote"></p>
+        <p>Leave it empty to look in the usual places. A folder can hold Companion's headless build (companion_headless.sh) or a desktop install, such as /Applications/Companion.app or C:\Program Files\Companion.</p>
+        <p id="configNote"></p>
+      </div>
+      <div class="card">
+        <strong>Touch buttons</strong>
+        <p>The surface Companion sees on the touch screen. 12×3 and Key size draw buttons about as big as the Stream Deck keys; 12×3 hides the address bar on the panel to fit three rows. Changing it re-registers the surface.</p>
+        <div><div class="seg" id="grids" role="group" aria-label="Touch grid"></div></div>
+      </div>
+      <div class="card">
+        <strong>What a save holds</strong>
+        <p>The choice above, the Companion address and the grid size. Buttons, pages and connections live in Companion and are backed up there.</p>
+      </div>
+    </section>
+
+    <rcs-dialog id="confirm">
+      <span id="confirmText"></span>
+      <div slot="buttons">
+        <rcs-button id="no">Cancel</rcs-button>
+        <rcs-button id="yes" variant="danger">OK</rcs-button>
+      </div>
+    </rcs-dialog>
+
+    <script type="module">
+      const $ = (id) => document.getElementById(id);
+      const PAGES = ['buttons', 'status', 'setup'];
+      let s = null;
+      let page = 'buttons';
+      let onYes = null;
+      // Each surface's latest buttons, as the module sends them.
+      const surf = { touch: { columns: 0, rows: 0, tiles: new Map() }, keys: { columns: 5, rows: 3, tiles: new Map() } };
+
+      function el(tag, attrs = {}, text) {
+        const e = document.createElement(tag);
+        for (const [k, v] of Object.entries(attrs)) {
+          if (v === true) e.setAttribute(k, '');
+          else if (v !== false && v != null) e.setAttribute(k, String(v));
+        }
+        if (text != null) e.textContent = text;
+        return e;
+      }
+
+      function ask(text, label, fn) {
+        $('confirmText').textContent = text;
+        $('yes').textContent = label;
+        onYes = fn;
+        $('confirm').show();
+      }
+      $('no').onclick = () => $('confirm').close();
+      $('yes').onclick = () => {
+        $('confirm').close();
+        onYes?.();
+      };
+
+      // ---- buttons: both surfaces, pressable ----
+
+      const pointers = new Map(); // pointerId -> "surface:key"
+      function down(e, which, i) {
+        e.preventDefault();
+        if (pointers.has(e.pointerId)) return;
+        pointers.set(e.pointerId, `${which}:${i}`);
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+        rcs.send({ type: 'touch', surface: which, key: i, pressed: true });
+      }
+      function up(e) {
+        const id = pointers.get(e.pointerId);
+        if (id === undefined) return;
+        pointers.delete(e.pointerId);
+        if ([...pointers.values()].includes(id)) return;
+        const [which, i] = id.split(':');
+        rcs.send({ type: 'touch', surface: which, key: Number(i), pressed: false });
+      }
+
+      function gridBox(which) {
+        return $(which === 'keys' ? 'keysGrid' : 'touchGrid');
+      }
+
+      function build(which) {
+        const g = surf[which];
+        const box = gridBox(which);
+        box.style.gridTemplateColumns = which === 'keys' ? '' : `repeat(${g.columns}, minmax(0, 1fr))`;
+        const wide = which === 'touch' && g.rows < 3;
+        const list = [];
+        for (let i = 0; i < g.columns * g.rows; i++) {
+          const b = el('button', { class: 'tile empty' + (wide ? ' wide' : ''), 'data-i': i, 'aria-label': `${which === 'keys' ? 'Key' : 'Button'} ${i + 1}` });
+          b.addEventListener('pointerdown', (e) => down(e, which, i));
+          b.addEventListener('pointerup', up);
+          b.addEventListener('pointercancel', up);
+          b.addEventListener('lostpointercapture', up);
+          list.push(b);
+        }
+        box.replaceChildren(...list);
+        for (const t of g.tiles.values()) paint(which, t);
+      }
+
+      function paint(which, t) {
+        const b = gridBox(which).querySelector(`[data-i="${t.i}"]`);
+        if (!b) return;
+        b.classList.toggle('empty', !t.image && !t.text && !t.color);
+        b.classList.toggle('pressed', !!t.pressed);
+        b.style.background = t.color ?? '';
+        b.style.color = t.textColor ?? '';
+        const label = (t.text ?? '').trim();
+        b.title = label.replace(/\s+/g, ' ');
+        b.setAttribute('aria-label', `${which === 'keys' ? 'Key' : 'Button'} ${t.i + 1}${label ? ', ' + b.title : ''}`);
+        if (t.image) {
+          let img = b.querySelector('img');
+          if (!img) b.replaceChildren((img = el('img', { alt: '' })));
+          const src = 'data:image/png;base64,' + t.image;
+          if (img.getAttribute('src') !== src) img.src = src;
+        } else {
+          b.replaceChildren(label ? el('span', {}, label) : '');
+        }
+      }
+
+      function onTiles(m) {
+        const which = m.surface === 'keys' ? 'keys' : 'touch';
+        const g = surf[which];
+        if (m.reset || m.columns !== g.columns || m.rows !== g.rows) {
+          g.tiles.clear();
+          g.columns = m.columns;
+          g.rows = m.rows;
+          for (const t of m.tiles) g.tiles.set(t.i, t);
+          build(which);
+          return;
+        }
+        for (const t of m.tiles) {
+          g.tiles.set(t.i, t);
+          paint(which, t);
+        }
+      }
+
+      // ---- pages ----
+
+      const local = () => s.config.mode === 'local';
+      const live = () => !!(s.surfaces.touch?.registered || s.surfaces.keys?.registered);
+
+      function drawHeader() {
+        $('pill').setAttribute('connection', live() ? 'connected' : s.connection === 'connected' ? 'connecting' : s.connection);
+        $('pill').textContent = live() ? (local() ? 'Companion running' : 'Satellite connected') : '';
+        const running = s.phase === 'running';
+        $('manageLabel').hidden = $('manageUrl').hidden = !running || !s.manageUrl;
+        $('manageLabel').textContent = local() ? 'Set up buttons at' : 'Buttons are set up in Companion at';
+        for (const id of ['manageUrl', 'manageUrl2']) {
+          $(id).textContent = s.manageUrl;
+          $(id).href = s.manageUrl || '#';
+        }
+      }
+
+      function drawButtons() {
+        const ok = live();
+        $('surfaces').hidden = !ok;
+        $('offline').hidden = ok;
+        $('touchName').textContent = `${s.surfaces.touch.id} · ${s.grid.label}`;
+        $('keysName').textContent = s.surfaces.keys.id;
+        if (!ok) {
+          const r = s.runner;
+          $('offline').textContent =
+            r?.state === 'missing'
+              ? r.wantedDir
+                ? `There is no Companion in ${r.wantedDir}. Change the folder on the Setup page.`
+                : `Companion was not found on this panel (looked in ${r.searched.join(', ')}). Set its folder on the Setup page.`
+              : s.surfaces.touch?.error
+                ? `Companion refused the touch surface: ${s.surfaces.touch.error}`
+                : s.statusText || 'Connecting to Companion…';
+        }
+      }
+
+      function ago(t) {
+        if (!t) return '—';
+        const m = Math.floor((Date.now() - t) / 60000);
+        return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
+      }
+
+      function drawStatus() {
+        $('manageCaps').textContent = local() ? 'MANAGE COMPANION AT' : 'SET UP BUTTONS IN COMPANION AT';
+        $('manageNote').textContent =
+          (local() ? 'Open this in a browser on the same network.' : 'Companion runs on that computer (its admin page is usually on port 8000).') +
+          ` This panel shows up there as two surfaces: ${s.surfaces.keys.id} and ${s.surfaces.touch.id}.`;
+        const r = s.runner;
+        const sf = (x) => (x?.registered ? `${x.columns}×${x.rows} · connected` : x?.error ? `refused: ${x.error}` : 'not connected');
+        const rows = [
+          ['Runs', local() ? 'Companion, on this panel' : 'Satellite, to another computer'],
+          ['Companion', s.companion.version ? `${s.companion.version} · Satellite API ${s.companion.api}` : '—'],
+          ['Connection', s.statusText || s.connection],
+          ['This panel', s.self],
+          ['Surface: keys', `${s.surfaces.keys.id} · ${sf(s.surfaces.keys)}`],
+          ['Surface: touch', `${s.surfaces.touch.id} · ${sf(s.surfaces.touch)}`]
+        ];
+        if (r) {
+          rows.push(['Process', r.pid ? `pid ${r.pid} · up ${ago(r.startedAt)}` : r.state]);
+          rows.push(['Restarts', `${r.restarts} since start${r.lastExit ? ' · last ' + r.lastExit : ''}`]);
+          rows.push(['Installed in', r.found ? r.dir : 'not found']);
+          rows.push(['Config', r.configDir]);
+        }
+        $('facts').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]));
+        $('restart').hidden = !r;
+        $('logCard').hidden = !r?.tail?.length;
+        $('tail').textContent = (r?.tail ?? []).join('\n');
+      }
+
+      function drawSetup() {
+        $('modeNote').textContent = local() ? 'Companion, on this panel' : `Companion Satellite, connected to ${s.config.host || '(no address yet)'}`;
+        $('remoteCard').hidden = local();
+        $('localCard').hidden = !local();
+        // Leave a box alone while someone is typing in it.
+        const put = (id, v) => document.activeElement !== $(id) && ($(id).value = v);
+        put('addr', s.config.host);
+        put('port', String(s.config.port));
+        put('dir', s.config.companionDir);
+        const r = s.runner;
+        $('dirNote').textContent = !r
+          ? ''
+          : r.found
+            ? `Running Companion from ${r.dir}.`
+            : r.wantedDir
+              ? `There is no Companion in ${r.wantedDir}.`
+              : `Not found. Looked in ${r.searched.join(', ')}.`;
+        $('configNote').textContent = r ? `Companion keeps its buttons and connections in ${r.configDir}.` : '';
+        $('grids').replaceChildren(
+          ...s.grids.map((g) => {
+            const b = el('button', { 'aria-pressed': String(g.id === s.grid.id) }, g.label);
+            b.onclick = () => g.id !== s.grid.id && rcs.send({ type: 'config', config: { grid: g.id } });
+            return b;
+          })
+        );
+      }
+
+      function draw() {
+        if (!s) return;
+        drawHeader();
+        // Until Companion is chosen and has an address, every page shows the choice.
+        const chosen = s.phase === 'running' || (s.phase === 'host' && page === 'setup');
+        $('choose').hidden = s.phase !== 'choose';
+        for (const id of PAGES) $('page-' + id).hidden = s.phase === 'choose' || id !== (chosen ? page : 'setup');
+        if (s.phase === 'choose') return;
+        if (s.phase === 'host') return drawSetup();
+        if (page === 'buttons') drawButtons();
+        if (page === 'status') drawStatus();
+        if (page === 'setup') drawSetup();
+      }
+
+      function show(p) {
+        page = PAGES.includes(p) ? p : 'buttons';
+        draw();
+      }
+
+      const saveRemote = () => {
+        const host = $('addr').value.trim();
+        const port = Number($('port').value);
+        rcs.send({ type: 'config', config: { host, port } });
+      };
+      $('saveRemote').onclick = saveRemote;
+      for (const id of ['addr', 'port']) $(id).addEventListener('keydown', (e) => e.key === 'Enter' && saveRemote());
+      $('saveDir').onclick = () => rcs.send({ type: 'config', config: { companionDir: $('dir').value.trim() } });
+      $('pickLocal').onclick = () => rcs.send({ type: 'choose', mode: 'local' });
+      $('pickSatellite').onclick = () => rcs.send({ type: 'choose', mode: 'satellite' });
+      $('reconnect').onclick = () => rcs.send({ type: 'reconnect' });
+      $('restart').onclick = () => ask('Restart Companion? Buttons stop working for a few seconds while it starts again.', 'Restart', () => rcs.send({ type: 'restart' }));
+      $('changeMode').onclick = () =>
+        ask(
+          local()
+            ? 'Stop Companion on this panel and choose again? Its buttons and connections stay in its config.'
+            : 'Disconnect from Companion and choose again? The buttons stay set up in Companion.',
+          'Change',
+          () => rcs.send({ type: 'choose', mode: '' })
+        );
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden && pointers.size) {
+          pointers.clear();
+          rcs.send({ type: 'release-all' });
+        }
+      });
+
+      const info = await rcs.ready();
+      rcs.on('page', show);
+      rcs.on('message', (m) => {
+        if (m?.type === 'tiles') return onTiles(m);
+        if (m?.type !== 'snapshot') return;
+        s = m;
+        draw();
+      });
+      show(info.page);
+      rcs.send({ type: 'hello' });
+    </script>
+  </body>
+</html>
