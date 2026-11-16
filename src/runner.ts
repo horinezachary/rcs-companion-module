@@ -9,15 +9,18 @@
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import net from 'node:net';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-export type RunState = 'stopped' | 'starting' | 'running' | 'missing' | 'restarting';
+/** 'external': a Companion someone else started (the desktop app, say) already holds the ports, so it is used. */
+export type RunState = 'stopped' | 'starting' | 'running' | 'missing' | 'restarting' | 'external';
 
 export const LAUNCHER = 'companion_headless.sh';
 export const ADMIN_PORT = 8000;
+export const SATELLITE_PORT = 16622;
 
 export interface RunnerOptions {
   /** Folder holding Companion. Empty: search the usual places (searchDirs). */
@@ -27,6 +30,8 @@ export interface RunnerOptions {
   /** Where Companion keeps its buttons, pages and connections. */
   configDir: string;
   adminPort?: number;
+  /** Companion's Satellite port, checked with the admin port to see whether a Companion is already running. */
+  satellitePort?: number;
   /** First restart delay after Companion exits by itself; doubles up to a minute. */
   restartMs?: number;
 }
@@ -57,6 +62,7 @@ export class CompanionRunner extends EventEmitter {
   readonly searched: string[];
   readonly configDir: string;
   readonly adminPort: number;
+  readonly satellitePort: number;
   private readonly restartMs: number;
 
   constructor(opts: RunnerOptions) {
@@ -65,6 +71,7 @@ export class CompanionRunner extends EventEmitter {
     this.searched = opts.dir ? [opts.dir] : (opts.search ?? searchDirs());
     this.configDir = opts.configDir;
     this.adminPort = opts.adminPort ?? ADMIN_PORT;
+    this.satellitePort = opts.satellitePort ?? SATELLITE_PORT;
     this.restartMs = opts.restartMs ?? 2000;
     this.delay = this.restartMs;
   }
@@ -115,15 +122,25 @@ export class CompanionRunner extends EventEmitter {
   private async launch(): Promise<void> {
     this.timer = null;
     if (!this.wanted) return;
+    await mkdir(this.configDir, { recursive: true });
+    await this.stopLeftover();
+    if (!this.wanted) return;
     this.found = findInstall(this.searched);
+    // A Companion that is already running here (the desktop app, or one started by hand) holds the
+    // ports, so a second one could not start. Use that one, and look again now and then.
+    if ((await listening(this.satellitePort)) || (await listening(this.adminPort))) {
+      if (!this.wanted) return;
+      if (this.state !== 'external') this.set('external');
+      this.timer = setTimeout(() => void this.launch(), 10_000);
+      return;
+    }
     if (!this.found) {
+      if (!this.wanted) return;
       this.set('missing');
       // Look again now and then, so installing Companion needs no restart of the module.
       this.timer = setTimeout(() => void this.launch(), 10_000);
       return;
     }
-    await mkdir(this.configDir, { recursive: true });
-    await this.stopLeftover();
     if (!this.wanted) return;
     this.set('starting');
     const { command, args, dir } = this.found;
@@ -203,6 +220,20 @@ function signalGroup(pid: number | undefined, signal: NodeJS.Signals): void {
   }
 }
 
+/** Whether something accepts connections on this port on this computer. */
+export function listening(port: number, host = '127.0.0.1', timeoutMs = 1000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const sock = net.connect({ port, host });
+    const done = (ok: boolean) => {
+      sock.destroy();
+      resolve(ok);
+    };
+    sock.setTimeout(timeoutMs, () => done(false));
+    sock.once('connect', () => done(true));
+    sock.once('error', () => done(false));
+  });
+}
+
 function alive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -232,7 +263,41 @@ export function searchDirs(platform: NodeJS.Platform = process.platform, env: No
   return ['/opt/companion', '/usr/local/companion', '/usr/lib/companion', path.join(home, 'companion'), path.join(home, 'companion-headless')];
 }
 
-const NODE_RUNTIMES = ['node-runtimes/main/bin/node', 'node-runtimes/main/node.exe', 'node-runtime/bin/node', 'node-runtime/node.exe'];
+const NODE_BINS = ['bin/node', 'node', 'node.exe'];
+
+/**
+ * The node that runs a desktop install's server. Companion bundles several in node-runtimes/
+ * (node22, node26, ...); the one its package.json asks for is used, else `main`, else the newest.
+ * Older builds kept a single one in node-runtime/.
+ */
+export function bundledNode(dir: string): string | null {
+  const base = path.join(dir, 'node-runtimes');
+  const names: string[] = [];
+  try {
+    const engines = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'))?.engines?.node;
+    const major = /(\d+)/.exec(String(engines ?? ''))?.[1];
+    if (major) names.push(`node${major}`);
+  } catch {
+    // no package.json: go by folder names
+  }
+  names.push('main');
+  try {
+    const nodeDirs = readdirSync(base)
+      .filter((n) => /^node\d+$/.test(n))
+      .sort((a, b) => Number(b.slice(4)) - Number(a.slice(4)));
+    names.push(...nodeDirs);
+  } catch {
+    // no node-runtimes folder
+  }
+  const candidates = [...names.map((n) => path.join(base, n)), path.join(dir, 'node-runtime')];
+  for (const c of candidates) {
+    for (const b of NODE_BINS) {
+      const p = path.join(c, b);
+      if (existsSync(p)) return p;
+    }
+  }
+  return null;
+}
 
 /**
  * The first folder that holds a Companion this module can start. A desktop app's folder works too:
@@ -245,7 +310,7 @@ export function findInstall(dirs: string[]): Install | null {
       if (process.platform !== 'win32' && existsSync(sh)) return { dir, command: sh, args: [] };
       const main = path.join(dir, 'main.js');
       if (!existsSync(main)) continue;
-      const node = NODE_RUNTIMES.map((n) => path.join(dir, n)).find((n) => existsSync(n));
+      const node = bundledNode(dir);
       if (node) return { dir, command: node, args: [main] };
     }
   }
