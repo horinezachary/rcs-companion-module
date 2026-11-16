@@ -25,7 +25,7 @@ export interface Config {
   host: string;
   port: number;
   grid: GridId;
-  /** Where Companion's headless build is installed, for local mode. */
+  /** Where Companion is installed, for local mode. Empty: look in the usual places. */
   companionDir: string;
 }
 
@@ -46,7 +46,6 @@ export const GRIDS: Record<GridId, { columns: number; rows: number; bitmap: numb
 
 /** Keys on the choice screen, as in the mockup: key 6 runs Companion here, key 8 connects to one. */
 export const KEY = { RUN_LOCAL: 5, RUN_SATELLITE: 7, BACK: 13, STATUS: 7 } as const;
-const DEFAULT_DIR = '/opt/companion';
 /** ui.send drops anything over 64 KB, so tiles go out in batches under this. */
 const UI_BATCH_BYTES = 56 * 1024;
 
@@ -82,7 +81,7 @@ export function cfg(ctx: C): Config {
     host: c.host ?? '',
     port: c.port ?? DEFAULT_PORT,
     grid: c.grid && c.grid in GRIDS ? c.grid : '12x3',
-    companionDir: c.companionDir || DEFAULT_DIR
+    companionDir: c.companionDir ?? ''
   };
 }
 
@@ -131,7 +130,7 @@ function apply(ctx: C, force = false): void {
   const p = phase(c);
 
   if (p === 'running' && c.mode === 'local') {
-    if (!rt.runner || rt.runner.dir !== c.companionDir) {
+    if (!rt.runner || rt.runner.wantedDir !== c.companionDir) {
       void rt.runner?.stop();
       const runner = new CompanionRunner({ dir: c.companionDir, configDir: path.join(ctx.dataDir, 'companion') });
       rt.runner = runner;
@@ -200,7 +199,7 @@ function report(ctx: C): void {
   if (!client) return void ctx.status('disconnected');
   // A Companion someone started by hand on this panel still counts.
   if (client.connection === 'connected') return void ctx.status('connected', client.statusText);
-  if (runner?.state === 'missing') return void ctx.status('disconnected', `Companion is not installed in ${runner.dir}`);
+  if (runner?.state === 'missing') return void ctx.status('disconnected', runner.wantedDir ? `Companion is not in ${runner.wantedDir}` : 'Companion is not installed on this panel');
   if (runner && runner.state !== 'running') {
     return void ctx.status('connecting', runner.state === 'restarting' ? `Companion ${runner.lastExit}; restarting` : 'Starting Companion');
   }
@@ -227,9 +226,10 @@ function press(surface: string, key: number, down: boolean): void {
   }
 }
 
-function touch(clientId: string, key: number, down: boolean): void {
+/** A press from a screen: the panel's touch grid, or either surface in the web view. */
+function touch(clientId: string, which: Which, key: number, down: boolean): void {
   if (!rt) return;
-  const touchId = surfaceIds().touch;
+  const touchId = surfaceIds()[which === 'keys' ? 'keys' : 'touch'];
   const id = `${touchId}:${key}`;
   let mine = rt.clientHeld.get(clientId);
   if (down) {
@@ -294,29 +294,34 @@ export function snapshot(ctx: C) {
     grid: { id: c.grid, ...GRIDS[c.grid] },
     grids: Object.entries(GRIDS).map(([id, g]) => ({ id, label: g.label })),
     runner: runner
-      ? { state: runner.state, pid: runner.pid, startedAt: runner.startedAt, restarts: runner.restarts, lastExit: runner.lastExit, dir: runner.dir, configDir: runner.configDir, tail: runner.tail.slice(-8) }
+      ? { state: runner.state, pid: runner.pid, startedAt: runner.startedAt, restarts: runner.restarts, lastExit: runner.lastExit, dir: runner.dir, found: !!runner.found, wantedDir: runner.wantedDir, searched: runner.searched, configDir: runner.configDir, tail: runner.tail.slice(-8) }
       : null,
     self,
     manageUrl: companionHost ? `http://${companionHost}:${ADMIN_PORT}` : ''
   };
 }
 
-/** One touch tile for the panel UI. */
+type Which = 'touch' | 'keys';
+
+/** One button for the UIs. */
 function tile(index: number, k: KeyState | undefined) {
   return k ? { i: index, image: k.image, color: k.color, textColor: k.textColor, text: k.text, pressed: k.pressed } : { i: index };
 }
 
-/** Sends touch tiles in batches that fit a UI message. `all` sends the whole grid, starting fresh. */
-async function sendTiles(ctx: C, indexes: number[] | 'all', clientId?: string): Promise<void> {
-  const surface = rt?.client?.surfaces.get(surfaceIds().touch);
-  const g = GRIDS[cfg(ctx).grid];
+/**
+ * Sends a surface's buttons in batches that fit a UI message. `all` sends the whole surface,
+ * starting fresh. The panel draws the touch grid; the web view draws both.
+ */
+async function sendTiles(ctx: C, which: Which, indexes: number[] | 'all', clientId?: string): Promise<void> {
+  const surface = rt?.client?.surfaces.get(surfaceIds()[which === 'keys' ? 'keys' : 'touch']);
+  const g = which === 'keys' ? { columns: 5, rows: 3 } : GRIDS[cfg(ctx).grid];
   const all = indexes === 'all';
   const list = all ? [...Array(g.columns * g.rows).keys()] : indexes;
   let batch: ReturnType<typeof tile>[] = [];
   let bytes = 0;
   let first = all;
   const flush = async () => {
-    await ctx.ui.send({ type: 'tiles', reset: first, columns: g.columns, rows: g.rows, tiles: batch }, clientId);
+    await ctx.ui.send({ type: 'tiles', surface: which, reset: first, columns: g.columns, rows: g.rows, tiles: batch }, clientId);
     first = false;
     batch = [];
     bytes = 0;
@@ -410,23 +415,39 @@ async function flushDirty(ctx: C): Promise<void> {
   if (deck.length) {
     const faces = keyFaces(ctx);
     await ctx.keys.setMany(deck.filter((i) => i < 15).map((i) => faces[i]!));
+    await sendTiles(ctx, 'keys', deck.sort((a, b) => a - b));
   }
-  if (tiles.length) await sendTiles(ctx, tiles.sort((a, b) => a - b));
+  if (tiles.length) await sendTiles(ctx, 'touch', tiles.sort((a, b) => a - b));
 }
 
 export async function draw(ctx: C, clientId?: string): Promise<void> {
   if (!clientId) await ctx.keys.setMany(keyFaces(ctx));
   await ctx.ui.send(snapshot(ctx), clientId);
-  if (phase(cfg(ctx)) === 'running') await sendTiles(ctx, 'all', clientId);
+  if (phase(cfg(ctx)) === 'running') {
+    await sendTiles(ctx, 'touch', 'all', clientId);
+    await sendTiles(ctx, 'keys', 'all', clientId);
+  }
 }
 
 function strip(ctx: C): Promise<void> {
   if (phase(cfg(ctx)) !== 'running') return ctx.strip.set([]);
-  return ctx.strip.set([
-    { id: 'buttons', label: 'Buttons', icon: 'assets/buttons.svg' },
-    { id: 'status', label: 'Status', icon: 'assets/status.svg' },
-    { id: 'setup', label: 'Setup', icon: 'assets/setup.svg' }
-  ]);
+  return ctx.strip.set(
+    [
+      { id: 'buttons', label: 'Buttons', icon: 'assets/buttons.svg' },
+      { id: 'status', label: 'Status', icon: 'assets/status.svg' },
+      { id: 'setup', label: 'Setup', icon: 'assets/setup.svg' }
+    ],
+    rt?.view ?? 'buttons'
+  );
+}
+
+/** Changes the panel's page from inside the module (a button in its UI), moving the strip highlight too. */
+async function showView(ctx: C, view: View): Promise<void> {
+  if (!rt) return;
+  rt.view = view;
+  // strip.select arrived with host 0.8.0; an older host keeps the highlight where it was.
+  if (phase(cfg(ctx)) === 'running') await ctx.strip.select?.(view).catch(() => {});
+  await draw(ctx);
 }
 
 // ---- the module's own settings ------------------------------------------------------------------------
@@ -459,7 +480,8 @@ async function setConfig(ctx: C, changes: Partial<Config>): Promise<void> {
   }
   if (changes.companionDir !== undefined) {
     const d = String(changes.companionDir).trim();
-    if (!path.isAbsolute(d) || d.length > 512) {
+    // Empty means look in the usual places again.
+    if ((d && !path.isAbsolute(d)) || d.length > 512) {
       await ctx.notify('Companion folder must be a full path, such as /opt/companion', 'warning');
       return draw(ctx);
     }
@@ -556,15 +578,17 @@ export default defineModule<State, Config>({
       case 'hello':
         return draw(ctx, clientId);
       case 'touch': {
+        // From the panel's grid, or from the web view's copy of either surface.
+        const which: Which = m.surface === 'keys' ? 'keys' : 'touch';
         const key = Number(m.key);
-        const g = GRIDS[cfg(ctx).grid];
-        if (Number.isInteger(key) && key >= 0 && key < g.columns * g.rows) touch(clientId, key, !!m.pressed);
+        const g = which === 'keys' ? { columns: 5, rows: 3 } : GRIDS[cfg(ctx).grid];
+        if (Number.isInteger(key) && key >= 0 && key < g.columns * g.rows) touch(clientId, which, key, !!m.pressed);
         return;
       }
       case 'release-all':
         return releaseClient(clientId);
       case 'view':
-        if (['buttons', 'status', 'setup'].includes(m.view)) rt.view = m.view;
+        if (['buttons', 'status', 'setup'].includes(m.view)) return showView(ctx, m.view);
         return draw(ctx);
       case 'choose':
         if (m.mode === 'local' || m.mode === 'satellite' || m.mode === '') return setConfig(ctx, { mode: m.mode });

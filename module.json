@@ -8,5 +8,22 @@
   "entry": "dist/index.js",
   "ui": "ui",
   "configSchema": "config.schema.json",
-  "defaults": "config.defaults.json"
+  "defaults": "config.defaults.json",
+  "web": {
+    "ui": "web",
+    "pages": [
+      {
+        "id": "buttons",
+        "label": "Buttons"
+      },
+      {
+        "id": "status",
+        "label": "Status"
+      },
+      {
+        "id": "setup",
+        "label": "Setup"
+      }
+    ]
+  }
 }

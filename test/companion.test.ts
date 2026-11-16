@@ -1,5 +1,5 @@
 import { startTestModule, type TestModule } from '@rcs/module-sdk/testing';
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -11,7 +11,7 @@ import mod, { KEY, surfaceIds, type Config, type State } from '../src/index.js';
 import { MockCompanion } from '../src/mock.js';
 import { bitmapToPng, encodePng } from '../src/png.js';
 import { formatLine, LineReader, parseLine } from '../src/protocol.js';
-import { CompanionRunner } from '../src/runner.js';
+import { CompanionRunner, findInstall, searchDirs } from '../src/runner.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 let mock: MockCompanion | null = null;
@@ -244,6 +244,30 @@ describe('module', () => {
     expect(mock!.presses).toHaveLength(2);
   });
 
+  it('presses Stream Deck keys from the web view and sends it both surfaces', async () => {
+    const port = await startMock();
+    await startModule({ port });
+    await live();
+    await sim!.connectClient('web-1');
+    await until(() => sim!.uiMessages.some((m) => m.clientId === 'web-1' && m.message.type === 'tiles' && m.message.surface === 'keys'));
+    const keys = sim!.uiMessages.filter((m) => m.clientId === 'web-1' && m.message.surface === 'keys').flatMap((m) => m.message.tiles);
+    expect(keys).toHaveLength(15);
+    expect(keys[0].image).toMatch(/^iVBOR/);
+    await sim!.sendUi({ type: 'touch', surface: 'keys', key: 9, pressed: true }, 'web-1');
+    await sim!.sendUi({ type: 'touch', surface: 'keys', key: 9, pressed: false }, 'web-1');
+    await until(() => mock!.presses.length === 2);
+    expect(mock!.presses[0]).toEqual({ device: IDS.keys, key: 9, pressed: true });
+  });
+
+  it('moves the strip highlight when the panel UI changes page', async () => {
+    const port = await startMock();
+    await startModule({ port });
+    await live();
+    expect(sim!.activeStrip).toBe('buttons');
+    await sim!.sendUi({ type: 'view', view: 'status' });
+    expect(sim!.activeStrip).toBe('status');
+  });
+
   it('lets go of a held key when the system borrows the keys', async () => {
     const port = await startMock();
     await startModule({ port });
@@ -322,11 +346,44 @@ describe('Companion on this panel', () => {
     expect(() => process.kill(second, 0)).toThrow();
   });
 
+  it('looks for Companion in the usual places for each platform', () => {
+    expect(searchDirs('linux', {}, '/home/rcs')).toContain('/opt/companion');
+    expect(searchDirs('darwin', {}, '/Users/zac')).toEqual(expect.arrayContaining(['/Applications/Companion.app', '/Users/zac/Applications/Companion.app']));
+    expect(searchDirs('win32', { ProgramFiles: 'C:\\Program Files', LOCALAPPDATA: 'C:\\Users\\zac\\AppData\\Local' }, 'C:\\Users\\zac')).toEqual([
+      'C:\\Program Files\\Companion',
+      'C:\\Users\\zac\\AppData\\Local\\Programs\\Companion'
+    ]);
+  });
+
+  it('finds a headless build or a desktop install among several folders', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'rcs-find-'));
+    cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const app = path.join(root, 'Companion.app');
+    const res = path.join(app, 'Contents', 'Resources');
+    await mkdir(path.join(res, 'node-runtimes', 'main', 'bin'), { recursive: true });
+    await writeFile(path.join(res, 'main.js'), '');
+    await writeFile(path.join(res, 'node-runtimes', 'main', 'bin', 'node'), '');
+    expect(findInstall([path.join(root, 'nothing'), app])).toEqual({ dir: res, command: path.join(res, 'node-runtimes', 'main', 'bin', 'node'), args: [path.join(res, 'main.js')] });
+    const headless = await fakeInstall(0);
+    expect(findInstall([app.replace('Companion.app', 'x'), headless])).toMatchObject({ dir: headless, command: path.join(headless, 'companion_headless.sh') });
+    expect(findInstall([path.join(root, 'nothing')])).toBeNull();
+  });
+
+  it('runs the first Companion it finds when no folder is set', async () => {
+    const dir = await fakeInstall(0);
+    const runner = new CompanionRunner({ dir: '', search: ['/nonexistent/companion', dir], configDir: path.join(dir, 'config') });
+    cleanup.push(() => runner.stop(500));
+    runner.start();
+    await until(() => runner.state === 'running');
+    expect(runner.dir).toBe(dir);
+    expect(runner.searched).toEqual(['/nonexistent/companion', dir]);
+  });
+
   it('says so when Companion is not installed', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'rcs-companion-'));
     cleanup.push(() => rm(dir, { recursive: true, force: true }));
     await startModule({ mode: 'local', companionDir: dir });
-    await until(() => /not installed/.test(sim!.status?.text ?? ''));
+    await until(() => /not in /.test(sim!.status?.text ?? ''));
     await sim!.settle();
     expect(sim!.keys[KEY.STATUS]).toMatchObject({ label: 'NOT FOUND' });
   });

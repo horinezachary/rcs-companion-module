@@ -6,9 +6,9 @@ surfaces.
 
 On first start it asks how to run:
 
-- **Companion on this panel** (key 6): the module starts Companion's headless build from
-  `/opt/companion` and connects to it on `127.0.0.1`. Buttons, connections and pages are set up in a
-  browser at `http://<panel address>:8000`.
+- **Companion on this panel** (key 6): the module finds an installed Companion, starts it and connects
+  to it on `127.0.0.1`. Buttons, connections and pages are set up in a browser at
+  `http://<panel address>:8000`.
 - **Companion Satellite** (key 8): the module connects to a Companion already running on another
   computer, on its Satellite port (16622). Buttons are set up on that computer.
 
@@ -18,6 +18,25 @@ registers two surfaces, named after the panel's host name:
 - `rcs-<name>-keys`: the Stream Deck, 5×3.
 - `rcs-<name>-touch`: a grid of touch buttons, 12×3 by default (also 8×2, 6×2, 4×1, or 11×2 "Key
   size" in Setup). 12×3 and Key size draw buttons about the size of a Stream Deck key.
+
+### Where Companion is found
+
+With no folder set, the module looks in the usual install places and uses the first Companion it finds:
+
+- Linux and the Pi: `/opt/companion`, `/usr/local/companion`, `/usr/lib/companion`, `~/companion`,
+  `~/companion-headless` (the headless build, `companion_headless.sh`).
+- macOS: `/Applications/Companion.app`, `~/Applications/Companion.app`, `/opt/companion`.
+- Windows: `Companion` under `%ProgramFiles%`, `%ProgramFiles(x86)%` and `%LOCALAPPDATA%\Programs`.
+
+A desktop install is started from its bundled server (`main.js` and node runtime). If nothing is
+found, the panel and the web view's Setup page list the places looked in, and Setup takes a folder;
+clearing it goes back to searching. The module looks again every 10 seconds, so installing Companion
+needs no restart.
+
+### Web view
+
+The web view has Buttons (the touch grid and the Stream Deck, both pressable), Status (connection,
+surfaces and Companion's recent output) and Setup (mode, address and port, folder, grid) pages.
 
 ## Companion is the source of truth
 
