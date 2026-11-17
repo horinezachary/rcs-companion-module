@@ -15,7 +15,7 @@
       .url { font: 600 15px var(--rcs-mono); color: var(--rcs-accent); }
       .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
       .card { border: 1px solid var(--rcs-border); border-radius: 14px; background: var(--rcs-surface); padding: 18px; display: flex; flex-direction: column; gap: 12px; }
-      .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; }
+      .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 18px; }
       .card .t { font-size: 20px; font-weight: 700; }
       .card .k { font: 600 12px var(--rcs-mono); color: var(--rcs-muted); letter-spacing: 0.06em; margin-left: 8px; }
 
@@ -37,16 +37,16 @@
       dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 10px 20px; font-size: 15px; }
       dt { color: var(--rcs-muted); white-space: nowrap; }
       dd { margin: 0; font-family: var(--rcs-mono); overflow-wrap: anywhere; }
-      pre { margin: 0; font: 12px/1.5 var(--rcs-mono); color: var(--rcs-muted); white-space: pre-wrap; max-height: 360px; overflow: auto; }
+      pre { margin: 0; font: 12px/1.5 var(--rcs-mono); color: var(--rcs-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
 
       /* setup */
       label.field { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--rcs-muted); }
       input[type=text] { min-height: 44px; border-radius: 10px; border: 1px solid var(--rcs-border); background: var(--rcs-bg); color: var(--rcs-text);
         padding: 0 12px; font: 16px var(--rcs-mono); min-width: 0; box-sizing: border-box; }
       input[type=text]:focus { outline: 2px solid var(--rcs-accent); border-color: transparent; }
-      #addr { width: 280px; }
+      #addr { width: 280px; max-width: 100%; }
       #port { width: 120px; }
-      #dir { width: 360px; }
+      #dir { width: 360px; max-width: 100%; }
       .seg { display: inline-flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--rcs-bg); border: 1px solid var(--rcs-border); flex-wrap: wrap; }
       .seg button { height: 40px; padding: 0 16px; border-radius: 9px; border: none; background: transparent; color: var(--rcs-text); font: 600 15px var(--rcs-font); cursor: pointer; }
       .seg button[aria-pressed='true'] { background: var(--rcs-accent); color: var(--rcs-bg); }
