@@ -118,6 +118,13 @@ It needs two Actions secrets:
 - `RCS_SOURCE_TOKEN`: a fine-grained token with Contents read-only on `rack-control-surface`, so the
   workflows can link the SDK from it. CI uses the tag in `package.json` `rcs.sdkRef`.
 
+## Icon
+
+`assets/icon.svg` is the Companion mark (one button fanning out to many actions), redrawn as a one-colour shape
+from the app icon in [bitfocus/companion](https://github.com/bitfocus/companion) (`assets/linux/icon.png`). The
+Companion source is MIT licensed; the Companion name and logo belong to Bitfocus AS. The mark is used only to
+show which software this module works with. This module is not made or endorsed by Bitfocus.
+
 ## Layout
 
 | Path | What |

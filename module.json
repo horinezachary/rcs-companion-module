@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Use the touch screen and Stream Deck as Bitfocus Companion surfaces",
   "icon": "assets/icon.svg",
+  "theme": { "accent": "#D92D2E" },
   "apiVersion": 1,
   "entry": "dist/index.js",
   "ui": "ui",
