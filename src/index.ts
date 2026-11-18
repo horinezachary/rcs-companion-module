@@ -3,8 +3,9 @@
 // Two ways to run, picked on first start (and changed in Setup):
 //   satellite  connect to a Companion already running on another computer
 //   local      run Companion itself on this panel, then connect to it on 127.0.0.1
-// Either way the module speaks the Companion Satellite API itself and registers two surfaces: the 15
-// keys (5×3) and a touch grid (12×3 by default). Companion is the source of truth for every button:
+// Either way the module speaks the Companion Satellite API itself and registers two surfaces: the
+// Stream Deck's keys, at the deck's own size (5×3, an XL 8×4, a Stream Deck + XL 9×4; re-registered when
+// another deck is plugged in), and a touch grid (12×3 by default). Companion is the source of truth for every button:
 // faces come from Companion and are never saved. Config holds only the choice, the address and the
 // grid size. Starting, restoring and reconnecting only register the surfaces; a button press goes to
 // Companion only when someone touches a key.
@@ -48,6 +49,24 @@ export const GRIDS: Record<GridId, { columns: number; rows: number; bitmap: numb
 
 /** Keys on the choice screen, as in the mockup: key 6 runs Companion here, key 8 connects to one. */
 export const KEY = { RUN_LOCAL: 5, RUN_SATELLITE: 7, BACK: 13, STATUS: 7 } as const;
+
+export interface Grid {
+  columns: number;
+  rows: number;
+}
+
+/**
+ * The deck's grid. Read from ctx.host, not ctx.deck: a unit runs modules with its own controller's
+ * SDK, and one before 0.21.0 has no ctx.deck and reports no columns or rows (5 × 3).
+ */
+export function grid(ctx: { host: { deck: { columns?: number; rows?: number } } }): Grid {
+  return { columns: ctx.host?.deck?.columns ?? 5, rows: ctx.host?.deck?.rows ?? 3 };
+}
+
+/** A KEY (numbered on a 5 × 3 deck) at the same column and row of a larger deck. */
+function at(g: Grid, key: number): number {
+  return Math.floor(key / 5) * g.columns + (key % 5);
+}
 /** ui.send drops anything over 64 KB, so tiles go out in batches under this. */
 const UI_BATCH_BYTES = 56 * 1024;
 
@@ -123,7 +142,7 @@ function specs(ctx: C): SurfaceSpec[] {
   const ids = surfaceIds();
   const g = GRIDS[cfg(ctx).grid];
   return [
-    { id: ids.keys, name: `${panelName()} keys`, columns: 5, rows: 3, bitmap: ctx.host?.deck?.keySize ?? 72 },
+    { id: ids.keys, name: `${panelName()} keys`, ...grid(ctx), bitmap: ctx.host?.deck?.keySize ?? 72 },
     { id: ids.touch, name: `${panelName()} touch`, columns: g.columns, rows: g.rows, bitmap: g.bitmap }
   ];
 }
@@ -442,7 +461,7 @@ function tile(index: number, k: KeyState | undefined) {
  */
 async function sendTiles(ctx: C, which: Which, indexes: number[] | 'all', clientId?: string): Promise<void> {
   const surface = rt?.client?.surfaces.get(surfaceIds()[which === 'keys' ? 'keys' : 'touch']);
-  const g = which === 'keys' ? { columns: 5, rows: 3 } : GRIDS[cfg(ctx).grid];
+  const g = which === 'keys' ? grid(ctx) : GRIDS[cfg(ctx).grid];
   const all = indexes === 'all';
   const list = all ? [...Array(g.columns * g.rows).keys()] : indexes;
   let batch: ReturnType<typeof tile>[] = [];
@@ -473,18 +492,20 @@ function blank(index: number): KeySetParams {
   return { index };
 }
 
-/** The 15 keys: Companion's faces while the keys surface is live, otherwise the module's own. */
+/** The deck's keys: Companion's faces while the keys surface is live, otherwise the module's own. */
 function keyFaces(ctx: C): KeySetParams[] {
   const c = cfg(ctx);
   const p = phase(c);
-  const faces = [...Array(15).keys()].map(blank);
+  const g = grid(ctx);
+  const faces = [...Array(g.columns * g.rows).keys()].map(blank);
+  const put = (key: number, face: Omit<KeySetParams, 'index'>) => (faces[at(g, key)] = { index: at(g, key), ...face });
   if (p === 'choose') {
-    faces[KEY.RUN_LOCAL] = { index: KEY.RUN_LOCAL, label: 'RUN HERE', sublabel: 'Companion', background: ACCENT, color: ON_ACCENT };
-    faces[KEY.RUN_SATELLITE] = { index: KEY.RUN_SATELLITE, label: 'CONNECT', sublabel: 'Satellite', background: SURFACE };
+    put(KEY.RUN_LOCAL, { label: 'RUN HERE', sublabel: 'Companion', background: ACCENT, color: ON_ACCENT });
+    put(KEY.RUN_SATELLITE, { label: 'CONNECT', sublabel: 'Satellite', background: SURFACE });
     return faces;
   }
   if (p === 'host') {
-    faces[KEY.BACK] = { index: KEY.BACK, label: 'BACK', background: SURFACE };
+    put(KEY.BACK, { label: 'BACK', background: SURFACE });
     return faces;
   }
   const s = rt?.client?.surfaces.get(surfaceIds().keys);
@@ -492,7 +513,7 @@ function keyFaces(ctx: C): KeySetParams[] {
     const runner = rt?.runner;
     const label = runner?.state === 'missing' ? 'NOT FOUND' : rt?.client?.connection === 'connecting' ? 'CONNECTING' : 'OFFLINE';
     const sub = runner ? 'Companion' : short(c.host, 12);
-    faces[KEY.STATUS] = { index: KEY.STATUS, label, sublabel: s?.error ? 'refused' : sub, background: DANGER };
+    put(KEY.STATUS, { label, sublabel: s?.error ? 'refused' : sub, background: DANGER });
     return faces;
   }
   return s.keys.map((k, index) => deckFace(index, k));
@@ -518,7 +539,7 @@ function mark(which: 'deck' | 'touch', index: number): void {
 
 function markAll(which: 'deck' | 'touch'): void {
   if (!rt) return;
-  const n = which === 'deck' ? 15 : GRIDS[cfg(rt.ctx).grid].columns * GRIDS[cfg(rt.ctx).grid].rows;
+  const n = which === 'deck' ? grid(rt.ctx).columns * grid(rt.ctx).rows : GRIDS[cfg(rt.ctx).grid].columns * GRIDS[cfg(rt.ctx).grid].rows;
   for (let i = 0; i < n; i++) rt.dirty[which].add(i);
   schedule();
 }
@@ -542,7 +563,7 @@ async function flushDirty(ctx: C): Promise<void> {
   rt.dirty.touch.clear();
   if (deck.length) {
     const faces = keyFaces(ctx);
-    await ctx.keys.setMany(deck.filter((i) => i < 15).map((i) => faces[i]!));
+    await ctx.keys.setMany(deck.filter((i) => i < faces.length).map((i) => faces[i]!));
     await sendTiles(ctx, 'keys', deck.sort((a, b) => a - b));
   }
   if (tiles.length) await sendTiles(ctx, 'touch', tiles.sort((a, b) => a - b));
@@ -660,12 +681,12 @@ export default defineModule<State, Config>({
     const p = phase(cfg(ctx));
     if (p === 'choose') {
       if (action !== 'down') return;
-      if (index === KEY.RUN_LOCAL) return setConfig(ctx, { mode: 'local' });
-      if (index === KEY.RUN_SATELLITE) return setConfig(ctx, { mode: 'satellite' });
+      if (index === at(grid(ctx), KEY.RUN_LOCAL)) return setConfig(ctx, { mode: 'local' });
+      if (index === at(grid(ctx), KEY.RUN_SATELLITE)) return setConfig(ctx, { mode: 'satellite' });
       return;
     }
     if (p === 'host') {
-      if (action === 'down' && index === KEY.BACK) return setConfig(ctx, { mode: '' });
+      if (action === 'down' && index === at(grid(ctx), KEY.BACK)) return setConfig(ctx, { mode: '' });
       return;
     }
     const keys = surfaceIds().keys;
@@ -677,6 +698,17 @@ export default defineModule<State, Config>({
     } else if (rt.deckHeld.delete(index)) {
       press(keys, index, false);
     }
+  },
+
+  fullDeck: true,
+
+  // Another deck was plugged in: Companion gets the keys surface again at the new size, which
+  // redraws every key from Companion's own buttons.
+  async deck(ctx) {
+    releaseDeck();
+    apply(ctx);
+    await ctx.keys.clear();
+    await draw(ctx);
   },
 
   keysOwned(ctx, owned) {
@@ -710,7 +742,7 @@ export default defineModule<State, Config>({
         // From the panel's grid, or from the web view's copy of either surface.
         const which: Which = m.surface === 'keys' ? 'keys' : 'touch';
         const key = Number(m.key);
-        const g = which === 'keys' ? { columns: 5, rows: 3 } : GRIDS[cfg(ctx).grid];
+        const g = which === 'keys' ? grid(ctx) : GRIDS[cfg(ctx).grid];
         if (Number.isInteger(key) && key >= 0 && key < g.columns * g.rows) touch(clientId, which, key, !!m.pressed);
         return;
       }

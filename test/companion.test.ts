@@ -48,10 +48,11 @@ async function startMock(opts: ConstructorParameters<typeof MockCompanion>[0] = 
   return mock.listen(0);
 }
 
-async function startModule(config: Partial<Config>, extra: { reason?: 'boot' | 'restore' | 'user' } = {}) {
+async function startModule(config: Partial<Config>, extra: { reason?: 'boot' | 'restore' | 'user'; deck?: { columns: number; rows: number } } = {}) {
   sim = await startTestModule(mod, {
     config: { mode: 'satellite', host: '127.0.0.1', port: 16622, grid: '12x3', companionDir: '/opt/companion', ...config },
-    reason: extra.reason
+    reason: extra.reason,
+    deck: extra.deck
   });
   return sim;
 }
@@ -209,6 +210,29 @@ describe('module', () => {
     expect(sim!.keys[14]!.image).toMatch(/^iVBOR/);
     await until(() => new Set(tilesOf().filter((t) => t.image).map((t) => t.i)).size === 36);
     for (const m of sim!.uiMessages) expect(JSON.stringify(m.message).length).toBeLessThan(64 * 1024);
+  });
+
+  it('registers the keys at the size of a larger deck, and again when the deck changes', async () => {
+    const port = await startMock();
+    await startModule({ port }, { deck: { columns: 8, rows: 4 } });
+    await live();
+    expect(mock!.devices.get(IDS.keys)).toMatchObject({ columns: 8, rows: 4 });
+    expect(mock!.received.find((l) => l.startsWith('ADD-DEVICE') && l.includes(IDS.keys))).toContain('KEYS_TOTAL=32');
+    await until(() => !!sim!.keys[31]?.image);
+    await sim!.press(31);
+    await until(() => mock!.presses.length === 2);
+    expect(mock!.presses[0]).toEqual({ device: IDS.keys, key: 31, pressed: true });
+
+    await sim!.setDeck(9, 4);
+    await until(() => mock!.devices.get(IDS.keys)?.columns === 9);
+    await until(() => !!sim!.keys[35]?.image);
+  });
+
+  it('puts the choice keys in the same place on a larger deck', async () => {
+    sim = await startTestModule(mod, { config: { mode: '', host: '', port: 16622, grid: '12x3', companionDir: '/opt/companion' }, deck: { columns: 8, rows: 4 } });
+    expect(sim.keys[8]).toMatchObject({ label: 'RUN HERE' }); // column 0, row 1
+    await sim.press(10); // column 2, row 1: CONNECT
+    expect(sim.config.mode).toBe('satellite');
   });
 
   it('sends a key press and release to Companion and shows its answer', async () => {

@@ -1,7 +1,7 @@
 # Companion
 
 A [Rack Control Surface](https://github.horinetech.com/rcs-releases/) module that turns the panel's
-touch screen and its 15-key Stream Deck into [Bitfocus Companion](https://bitfocus.io/companion)
+touch screen and its Stream Deck into [Bitfocus Companion](https://bitfocus.io/companion)
 surfaces.
 
 On first start it asks how to run:
@@ -15,7 +15,8 @@ On first start it asks how to run:
 Either way the module speaks the Companion Satellite API itself (no separate Satellite app) and
 registers two surfaces, named after the panel's host name:
 
-- `rcs-<name>-keys`: the Stream Deck, 5×3.
+- `rcs-<name>-keys`: the Stream Deck at its own size: 5×3, an XL 8×4, a Stream Deck + XL 9×4 (controller 0.21.0
+  or later; older controllers give every module 5×3). Plugging in a deck of another size registers it again.
 - `rcs-<name>-touch`: a grid of touch buttons, 12×3 by default (also 8×2, 6×2, 4×1, or 11×2 "Key
   size" in Setup). 12×3 and Key size draw buttons about the size of a Stream Deck key.
 
