@@ -646,6 +646,8 @@ async function setConfig(ctx: C, changes: Partial<Config>): Promise<void> {
 }
 
 export default defineModule<State, Config>({
+  // The panel UI fills a taller screen too (1824×1080 on a 16:9 one). Controllers before 0.22.0 ignore it.
+  fullPanel: true,
   async start(ctx) {
     rt?.client?.stop();
     await rt?.runner?.stop();
