@@ -160,7 +160,7 @@
       </div>
       <div class="card">
         <strong>Touch buttons</strong>
-        <p>The surface Companion sees on the touch screen. 12×3 and Key size draw buttons about as big as the Stream Deck keys; 12×3 hides the address bar on the panel to fit three rows. Changing it re-registers the surface.</p>
+        <p>The surface Companion sees on the touch screen. 12×3 and Key size draw buttons about as big as the Stream Deck keys; 12×3 hides the address bar on the panel to fit three rows. Changing it re-registers the surface.<span id="gridNote"></span></p>
         <div><div class="seg" id="grids" role="group" aria-label="Touch grid"></div></div>
       </div>
       <div class="card">
@@ -413,6 +413,13 @@
             : r.desktop
               ? `Companion uses the Companion app's own buttons and connections, in ${r.configDir}.`
               : `Companion keeps its buttons and connections in ${r.configDir}.`;
+        // Tall grids are only listed when the unit's screen fits them.
+        const tallOffered = s.grids.some((g) => g.id === '12x6' || g.id === '8x4');
+        $('gridNote').textContent = s.chosenGrid
+          ? ` ${s.chosenGrid.label} is saved, for a taller screen; the unit's screen draws 12×3.`
+          : tallOffered
+            ? " 12×6 and 8×4 fit the unit's taller screen; with either, lay out the extra rows in Companion."
+            : '';
         $('grids').replaceChildren(
           ...s.grids.map((g) => {
             const b = el('button', { 'aria-pressed': String(g.id === s.grid.id) }, g.label);

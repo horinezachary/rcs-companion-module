@@ -5,7 +5,7 @@
 //   local      run Companion itself on this panel, then connect to it on 127.0.0.1
 // Either way the module speaks the Companion Satellite API itself and registers two surfaces: the
 // Stream Deck's keys, at the deck's own size (5×3, an XL 8×4, a Stream Deck + XL 9×4; re-registered when
-// another deck is plugged in), and a touch grid (12×3 by default). Companion is the source of truth for every button:
+// another deck is plugged in), and a touch grid (12×3 by default; 12×6 and 8×4 on a taller screen). Companion is the source of truth for every button:
 // faces come from Companion and are never saved. Config holds only the choice, the address and the
 // grid size. Starting, restoring and reconnecting only register the surfaces; a button press goes to
 // Companion only when someone touches a key.
@@ -20,7 +20,7 @@ import { ADMIN_PORT, CompanionRunner, downloadFor, MODULE_BUNDLE_URL } from './r
 import { download, downloadsDir, installedVersion, installTarball, isNewer, latestPackage, openInstaller, packageTarget, type Package } from './updater.js';
 
 export type Mode = '' | 'satellite' | 'local';
-export type GridId = '12x3' | '8x2' | '6x2' | '4x1' | 'keys';
+export type GridId = '12x3' | '8x2' | '6x2' | '4x1' | 'keys' | '12x6' | '8x4';
 
 export interface Config {
   mode: Mode;
@@ -38,14 +38,35 @@ export type State = Record<string, never>;
 type C = Ctx<State, Config>;
 export type View = 'buttons' | 'status' | 'setup';
 
-/** Touch grids. The bitmap size is what Companion draws at; the panel scales it to the tile. */
-export const GRIDS: Record<GridId, { columns: number; rows: number; bitmap: number; label: string }> = {
+/**
+ * Touch grids. The bitmap size is what Companion draws at; the panel scales it to the tile. Tall grids only fit a
+ * taller screen (a 16:9 one, 1824×1080 for this module): they are offered only there, and a unit with a shorter
+ * screen draws 12×3 instead (a save moved from another unit keeps its choice for when it is back on a tall one).
+ */
+export const GRIDS: Record<GridId, { columns: number; rows: number; bitmap: number; label: string; tall?: boolean }> = {
   '12x3': { columns: 12, rows: 3, bitmap: 112, label: '12×3' },
   '8x2': { columns: 8, rows: 2, bitmap: 160, label: '8×2' },
   '6x2': { columns: 6, rows: 2, bitmap: 168, label: '6×2' },
   '4x1': { columns: 4, rows: 1, bitmap: 288, label: '4×1' },
-  keys: { columns: 11, rows: 2, bitmap: 112, label: 'Key size' }
+  keys: { columns: 11, rows: 2, bitmap: 112, label: 'Key size' },
+  '12x6': { columns: 12, rows: 6, bitmap: 128, label: '12×6', tall: true },
+  '8x4': { columns: 8, rows: 4, bitmap: 192, label: '8×4', tall: true }
 };
+
+/** Content heights from this one up fit the tall grids (with the address bar above them). */
+export const TALL_GRID_MIN_HEIGHT = 900;
+
+/** Does this unit's screen fit the grid? */
+export function fits(ctx: { host?: { content?: { height?: number } } }, id: GridId): boolean {
+  return !GRIDS[id].tall || (ctx.host?.content?.height ?? 440) >= TALL_GRID_MIN_HEIGHT;
+}
+
+/** The touch grid in use: the chosen one, or 12×3 where the chosen one does not fit this screen. */
+export function touchGrid(ctx: C): { id: GridId; columns: number; rows: number; bitmap: number; label: string } {
+  const chosen = cfg(ctx).grid;
+  const id: GridId = fits(ctx, chosen) ? chosen : '12x3';
+  return { id, ...GRIDS[id] };
+}
 
 /** Keys on the choice screen, as in the mockup: key 6 runs Companion here, key 8 connects to one. */
 export const KEY = { RUN_LOCAL: 5, RUN_SATELLITE: 7, BACK: 13, STATUS: 7 } as const;
@@ -140,7 +161,7 @@ export function surfaceIds(): { keys: string; touch: string } {
 
 function specs(ctx: C): SurfaceSpec[] {
   const ids = surfaceIds();
-  const g = GRIDS[cfg(ctx).grid];
+  const g = touchGrid(ctx);
   return [
     { id: ids.keys, name: `${panelName()} keys`, ...grid(ctx), bitmap: ctx.host?.deck?.keySize ?? 72 },
     { id: ids.touch, name: `${panelName()} touch`, columns: g.columns, rows: g.rows, bitmap: g.bitmap }
@@ -434,8 +455,12 @@ export function snapshot(ctx: C) {
     statusText: client?.statusText ?? '',
     companion: { version: client?.companionVersion ?? '', api: client?.apiVersion ?? '', address: client?.address ?? '' },
     surfaces: { keys: { id: ids.keys, ...surfaceInfo(ids.keys) }, touch: { id: ids.touch, ...surfaceInfo(ids.touch) } },
-    grid: { id: c.grid, ...GRIDS[c.grid] },
-    grids: Object.entries(GRIDS).map(([id, g]) => ({ id, label: g.label })),
+    grid: touchGrid(ctx),
+    // The choice as saved, when this screen draws 12×3 instead.
+    chosenGrid: touchGrid(ctx).id === c.grid ? null : { id: c.grid, label: GRIDS[c.grid].label },
+    grids: Object.entries(GRIDS)
+      .filter(([id]) => fits(ctx, id as GridId))
+      .map(([id, g]) => ({ id, label: g.label })),
     runner: runner
       ? { state: runner.state, pid: runner.pid, startedAt: runner.startedAt, restarts: runner.restarts, lastExit: runner.lastExit, dir: runner.dir, found: !!runner.found, wantedDir: runner.wantedDir, searched: runner.searched, configDir: runner.companionConfigDir, external: runner.state === 'external', desktop: runner.found?.kind === 'desktop', tail: runner.tail.slice(-8) }
       : null,
@@ -461,7 +486,7 @@ function tile(index: number, k: KeyState | undefined) {
  */
 async function sendTiles(ctx: C, which: Which, indexes: number[] | 'all', clientId?: string): Promise<void> {
   const surface = rt?.client?.surfaces.get(surfaceIds()[which === 'keys' ? 'keys' : 'touch']);
-  const g = which === 'keys' ? grid(ctx) : GRIDS[cfg(ctx).grid];
+  const g = which === 'keys' ? grid(ctx) : touchGrid(ctx);
   const all = indexes === 'all';
   const list = all ? [...Array(g.columns * g.rows).keys()] : indexes;
   let batch: ReturnType<typeof tile>[] = [];
@@ -539,7 +564,8 @@ function mark(which: 'deck' | 'touch', index: number): void {
 
 function markAll(which: 'deck' | 'touch'): void {
   if (!rt) return;
-  const n = which === 'deck' ? grid(rt.ctx).columns * grid(rt.ctx).rows : GRIDS[cfg(rt.ctx).grid].columns * GRIDS[cfg(rt.ctx).grid].rows;
+  const tg = touchGrid(rt.ctx);
+  const n = which === 'deck' ? grid(rt.ctx).columns * grid(rt.ctx).rows : tg.columns * tg.rows;
   for (let i = 0; i < n; i++) rt.dirty[which].add(i);
   schedule();
 }
@@ -624,7 +650,8 @@ async function setConfig(ctx: C, changes: Partial<Config>): Promise<void> {
     next.port = p;
   }
   if (changes.grid !== undefined) {
-    if (!(changes.grid in GRIDS)) return;
+    // A tall grid is only offered where it fits; refuse it elsewhere rather than draw keys too small to touch.
+    if (!(changes.grid in GRIDS) || !fits(ctx, changes.grid)) return;
     next.grid = changes.grid;
   }
   if (changes.companionDir !== undefined) {
@@ -640,7 +667,7 @@ async function setConfig(ctx: C, changes: Partial<Config>): Promise<void> {
   await ctx.setConfig(next);
   if (rt && phase(next) !== 'running') rt.view = 'buttons';
   apply(ctx);
-  if (before.grid !== next.grid && phase(next) === 'running') await ctx.notify(`Touch surface re-registered as ${GRIDS[next.grid].label}`);
+  if (before.grid !== next.grid && phase(next) === 'running') await ctx.notify(`Touch surface re-registered as ${touchGrid(ctx).label}`);
   await strip(ctx);
   await draw(ctx);
 }
@@ -744,7 +771,7 @@ export default defineModule<State, Config>({
         // From the panel's grid, or from the web view's copy of either surface.
         const which: Which = m.surface === 'keys' ? 'keys' : 'touch';
         const key = Number(m.key);
-        const g = which === 'keys' ? grid(ctx) : GRIDS[cfg(ctx).grid];
+        const g = which === 'keys' ? grid(ctx) : touchGrid(ctx);
         if (Number.isInteger(key) && key >= 0 && key < g.columns * g.rows) touch(clientId, which, key, !!m.pressed);
         return;
       }
