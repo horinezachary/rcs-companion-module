@@ -18,7 +18,10 @@ registers two surfaces, named after the panel's host name:
 - `rcs-<name>-keys`: the Stream Deck at its own size: 5×3, an XL 8×4, a Stream Deck + XL 9×4 (controller 0.21.0
   or later; older controllers give every module 5×3). Plugging in a deck of another size registers it again.
 - `rcs-<name>-touch`: a grid of touch buttons, 12×3 by default (also 8×2, 6×2, 4×1, or 11×2 "Key
-  size" in Setup). 12×3 and Key size draw buttons about the size of a Stream Deck key.
+  size" in Setup). 12×3 and Key size draw buttons about the size of a Stream Deck key. On a 16:9 touchscreen
+  (1920×1080) Setup also offers 12×6 (keys a little larger than a Stream Deck key) and 8×4 (large keys); lay out
+  the extra rows in Companion after picking one. Nothing switches to them on its own. A save with 12×6 or 8×4
+  restored on a unit with the 1920×440 bar registers and draws 12×3 there, and keeps the choice for a taller screen.
 
 ### Where Companion is found
 
