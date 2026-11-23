@@ -48,11 +48,15 @@ async function startMock(opts: ConstructorParameters<typeof MockCompanion>[0] = 
   return mock.listen(0);
 }
 
-async function startModule(config: Partial<Config>, extra: { reason?: 'boot' | 'restore' | 'user'; deck?: { columns: number; rows: number } } = {}) {
+async function startModule(
+  config: Partial<Config>,
+  extra: { reason?: 'boot' | 'restore' | 'user'; deck?: { columns: number; rows: number }; panel?: { width: number; height: number } } = {}
+) {
   sim = await startTestModule(mod, {
     config: { mode: 'satellite', host: '127.0.0.1', port: 16622, grid: '12x3', companionDir: '/opt/companion', ...config },
     reason: extra.reason,
-    deck: extra.deck
+    deck: extra.deck,
+    panel: extra.panel
   });
   return sim;
 }
@@ -318,6 +322,38 @@ describe('module', () => {
     expect(sim!.config.grid).toBe('8x2');
     await until(() => tilesOf().some((t) => t.i === 15 && t.image));
     expect(presses()).toEqual([]);
+  });
+
+  it('offers taller touch grids only on a screen they fit', async () => {
+    const port = await startMock();
+    await startModule({ port }, { panel: { width: 1920, height: 1080 } });
+    await live();
+    const snap = () => sim!.uiMessages.map((m) => m.message).filter((m) => m.type === 'snapshot').at(-1);
+    await sim!.sendUi({ type: 'hello' });
+    expect(snap().grids.map((g: any) => g.id)).toEqual(['12x3', '8x2', '6x2', '4x1', 'keys', '12x6', '8x4']);
+    await sim!.sendUi({ type: 'config', config: { grid: '12x6' } });
+    await until(() => mock!.devices.get(IDS.touch)?.rows === 6);
+    expect(mock!.devices.get(IDS.touch)).toMatchObject({ columns: 12, rows: 6, bitmap: 128 });
+    expect(sim!.config.grid).toBe('12x6');
+    await until(() => tilesOf().some((t) => t.i === 71));
+    expect(presses()).toEqual([]);
+  });
+
+  it('draws 12×3 on a 440 bar when a taller grid was saved, and keeps the choice', async () => {
+    const port = await startMock();
+    await startModule({ port, grid: '12x6' });
+    await live();
+    expect(mock!.devices.get(IDS.touch)).toMatchObject({ columns: 12, rows: 3, bitmap: 112 });
+    expect(sim!.config.grid).toBe('12x6');
+    await sim!.sendUi({ type: 'hello' });
+    const snap = sim!.uiMessages.map((m) => m.message).filter((m) => m.type === 'snapshot').at(-1);
+    expect(snap.grid.id).toBe('12x3');
+    expect(snap.chosenGrid).toEqual({ id: '12x6', label: '12×6' });
+    expect(snap.grids.map((g: any) => g.id)).not.toContain('8x4');
+    // Not offered here, so not taken either.
+    await sim!.sendUi({ type: 'config', config: { grid: '8x4' } });
+    expect(sim!.config.grid).toBe('12x6');
+    expect(mock!.received.filter((l) => l.startsWith('REMOVE-DEVICE'))).toHaveLength(0);
   });
 
   it('checks the address before using it', async () => {

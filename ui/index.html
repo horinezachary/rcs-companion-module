@@ -32,6 +32,8 @@
       .bar .url { font: 600 15px var(--rcs-mono); color: var(--rcs-accent); }
       .tiles { flex: 1; min-height: 0; display: grid; justify-content: center; align-content: center; }
       .tiles.size12x3 { grid-template-columns: repeat(12, 112px); grid-template-rows: repeat(3, 112px); column-gap: 36px; row-gap: 30px; }
+      /* A tall screen's grid (only offered at 1824×1080): keys a little larger than 12×3's, with the address bar. */
+      .tiles.size12x6 { grid-template-columns: repeat(12, 128px); grid-template-rows: repeat(6, 128px); column-gap: 18px; row-gap: 24px; }
       .tiles.sizekeys { grid-template-columns: repeat(11, 112px); grid-template-rows: repeat(2, 112px); gap: 38px; }
       .tiles.fluid { justify-content: stretch; align-content: stretch; gap: 12px; }
       .tile { position: relative; border-radius: 14px; overflow: hidden; background: #000; border: 1px solid rgba(255, 255, 255, 0.08);
@@ -171,7 +173,7 @@
           <div class="item wide">
             <div class="t">
               <div class="n">Touch buttons</div>
-              <div class="s">The surface Companion sees on the touch screen. 12×3 and Key size draw buttons about as big as the Stream Deck keys; 12×3 hides the address bar to fit three rows (the address stays on Status). Changing it re-registers the surface.</div>
+              <div class="s">The surface Companion sees on the touch screen. 12×3 and Key size draw buttons about as big as the Stream Deck keys; 12×3 hides the address bar to fit three rows (the address stays on Status). Changing it re-registers the surface.<span id="gridNote"></span></div>
             </div>
             <div class="seg" id="grids" role="group" aria-label="Touch grid"></div>
           </div>
@@ -242,7 +244,7 @@
 
       function buildGrid() {
         const box = $('tiles');
-        const fixed = s.grid.id === '12x3' || s.grid.id === 'keys';
+        const fixed = s.grid.id === '12x3' || s.grid.id === 'keys' || s.grid.id === '12x6';
         box.className = 'tiles ' + (fixed ? 'size' + s.grid.id : 'fluid');
         if (!fixed) {
           box.style.gridTemplateColumns = `repeat(${grid.columns}, minmax(0, 1fr))`;
@@ -395,6 +397,13 @@
         $('autoDir').hidden = !s.config.companionDir;
         if (!$('addr').matches('[editing]')) $('addr').value = s.config.host;
         if (!$('port').matches('[editing]')) $('port').value = String(s.config.port);
+        // Tall grids are only listed where they fit; a choice saved on a taller screen says why 12×3 is drawn here.
+        const tallOffered = s.grids.some((g) => g.id === '12x6' || g.id === '8x4');
+        $('gridNote').textContent = s.chosenGrid
+          ? ` ${s.chosenGrid.label} is saved, for a taller screen; this one draws 12×3.`
+          : tallOffered
+            ? ' 12×6 and 8×4 fit this taller screen; with either, lay out the extra rows in Companion.'
+            : '';
         $('grids').replaceChildren(
           ...s.grids.map((g) => {
             const b = el('button', { 'aria-pressed': String(g.id === s.grid.id) }, g.label);
